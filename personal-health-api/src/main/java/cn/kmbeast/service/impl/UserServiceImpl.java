@@ -30,6 +30,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import com.tencentcloudapi.common.Credential;
+import com.tencentcloudapi.common.profile.ClientProfile;
+import com.tencentcloudapi.common.profile.HttpProfile;
+import com.tencentcloudapi.iai.v20200303.IaiClient;
+import com.tencentcloudapi.iai.v20200303.models.*;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.multipart.MultipartFile;
+import sun.misc.BASE64Encoder; // 或者使用 java.util.Base64
 
 /**
  * 用户服务实现类
@@ -40,6 +48,29 @@ public class UserServiceImpl implements UserService {
 
     @Resource
     private UserMapper userMapper;
+
+    // 读取配置文件中的腾讯云配置
+    @Value("${tencentcloudapi.secretId}")
+    private String secretId;
+    @Value("${tencentcloudapi.secretKey}")
+    private String secretKey;
+    @Value("${tencentcloudapi.endpoint}")
+    private String endpoint;
+    @Value("${tencentcloudapi.region}")
+    private String region;
+
+    // 定义一个固定的人员库ID
+    private static final String GROUP_ID = "PersonalHealthGroup";
+
+    // 获取腾讯云客户端实例
+    private IaiClient getClient() {
+        Credential cred = new Credential(secretId, secretKey);
+        HttpProfile httpProfile = new HttpProfile();
+        httpProfile.setEndpoint(endpoint);
+        ClientProfile clientProfile = new ClientProfile();
+        clientProfile.setHttpProfile(httpProfile);
+        return new IaiClient(cred, region, clientProfile);
+    }
 
     /**
      * 用户注册
@@ -227,5 +258,112 @@ public class UserServiceImpl implements UserService {
         List<LocalDateTime> localDateTimes = userList.stream().map(User::getCreateTime).collect(Collectors.toList());
         List<ChartVO> chartVOS = DateUtil.countDatesWithinRange(day, localDateTimes);
         return ApiResult.success(chartVOS);
+    }
+    /**
+     * 人脸数据录入
+     */
+    @Override
+    public Result<String> addFace(MultipartFile file, String userAccount) {
+        try {
+            String base64Img = java.util.Base64.getEncoder().encodeToString(file.getBytes());
+            IaiClient client = getClient();
+
+            // 1. 尝试获取人员库，不存在则创建
+            try {
+                GetGroupInfoRequest groupReq = new GetGroupInfoRequest();
+                groupReq.setGroupId(GROUP_ID);
+                client.GetGroupInfo(groupReq);
+            } catch (Exception e) {
+                try {
+                    CreateGroupRequest createGroupReq = new CreateGroupRequest();
+                    createGroupReq.setGroupName("健康管理人员库");
+                    createGroupReq.setGroupId(GROUP_ID);
+                    client.CreateGroup(createGroupReq);
+                } catch (Exception ex) {
+                    log.error("创建人员库失败", ex);
+                }
+            }
+
+            // 2. 尝试创建人员（携带人脸）
+            CreatePersonRequest req = new CreatePersonRequest();
+            req.setGroupId(GROUP_ID); // 创建人员时需要 GroupId
+            req.setPersonId(userAccount);
+            req.setPersonName(userAccount);
+            req.setImage(base64Img);
+
+            try {
+                client.CreatePerson(req);
+            } catch (Exception e) {
+                // 3. 如果人员已存在 (PersonIdAlreadyExist)，则调用增加人脸接口
+                if (e.getMessage().contains("InvalidParameterValue.PersonIdAlreadyExist")) {
+                    CreateFaceRequest faceReq = new CreateFaceRequest();
+                    // faceReq.setGroupId(GROUP_ID);
+                    faceReq.setPersonId(userAccount); // 只需要指定 PersonId
+                    faceReq.setImages(new String[]{base64Img});
+                    client.CreateFace(faceReq);
+                } else {
+                    throw e;
+                }
+            }
+            return ApiResult.success("人脸录入成功");
+
+        } catch (Exception e) {
+            log.error("人脸录入异常", e);
+            return ApiResult.error("人脸录入失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 人脸登录
+     */
+    @Override
+    public Result<Object> faceLogin(MultipartFile file) {
+        try {
+            String base64Img = java.util.Base64.getEncoder().encodeToString(file.getBytes());
+            IaiClient client = getClient();
+
+            // 1. 在人员库中搜索人脸
+            SearchFacesRequest req = new SearchFacesRequest();
+            req.setGroupIds(new String[]{GROUP_ID});
+            req.setImage(base64Img);
+            req.setMaxPersonNum(1L);
+            // 修正：删除 req.setMinScore(80F); 这一行，SDK请求对象里没这个方法
+
+            SearchFacesResponse resp = client.SearchFaces(req);
+
+            // 2. 解析结果
+            if (resp.getResults() != null && resp.getResults().length > 0) {
+                // 修正：将 ResultCandidate 改为 Candidate
+                Candidate candidate = resp.getResults()[0].getCandidates()[0];
+
+                // 现在 getScore() 和 getPersonId() 就能正常识别了
+                Float score = candidate.getScore();
+
+                if (score > 80) { // 二次校验分数
+                    String userAccount = candidate.getPersonId();
+
+                    // 3. 数据库查询用户
+                    User user = userMapper.getByActive(User.builder().userAccount(userAccount).build());
+                    if (user == null) {
+                        return ApiResult.error("识别通过，但系统内未找到关联账号");
+                    }
+                    if (user.getIsLogin()) {
+                        return ApiResult.error("账号被禁用");
+                    }
+
+                    // 4. 生成Token
+                    String token = JwtUtil.toToken(user.getId(), user.getUserRole());
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("token", token);
+                    map.put("role", user.getUserRole());
+                    return ApiResult.success("刷脸登录成功", map);
+                }
+            }
+            return ApiResult.error("人脸识别未通过，请重试");
+
+        } catch (Exception e) {
+            log.error("人脸登录异常", e);
+            return ApiResult.error("人脸识别服务异常");
+        }
     }
 }

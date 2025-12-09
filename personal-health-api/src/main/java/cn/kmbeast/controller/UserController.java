@@ -12,6 +12,7 @@ import cn.kmbeast.pojo.vo.ChartVO;
 import cn.kmbeast.pojo.vo.UserVO;
 import cn.kmbeast.service.UserService;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import java.util.List;
@@ -20,6 +21,28 @@ import java.util.Map;
 @RestController
 @RequestMapping("/user")
 public class UserController {
+    /**
+     * 人脸数据录入
+     * @param file 人脸图片文件
+     * @param userAccount 关联的用户账号
+     * @return Result<String>
+     */
+    @PostMapping(value = "/addFace")
+    @ResponseBody
+    public Result<String> addFace(@RequestParam("file") MultipartFile file, @RequestParam("userAccount") String userAccount) {
+        return userService.addFace(file, userAccount);
+    }
+
+    /**
+     * 人脸登录
+     * @param file 人脸图片文件
+     * @return Result<Object> 包含Token
+     */
+    @PostMapping(value = "/faceLogin")
+    @ResponseBody
+    public Result<Object> faceLogin(@RequestParam("file") MultipartFile file) {
+        return userService.faceLogin(file);
+    }
 
     @Resource
     private UserService userService;

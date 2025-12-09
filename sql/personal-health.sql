@@ -38,7 +38,7 @@ create table face_vef_log(
     vef_code int COMMENT '返回code',
     vef_msg varchar(200) COMMENT '返回msg',
     login_name varchar(100) COMMENT '登录名'
-);
+)ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='人脸验证日志表';
 
 
 -- ----------------------------
