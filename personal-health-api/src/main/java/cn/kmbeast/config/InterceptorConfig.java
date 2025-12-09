@@ -1,31 +1,36 @@
 package cn.kmbeast.config;
 
 import cn.kmbeast.Interceptor.JwtInterceptor;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+import javax.annotation.Resource;
+
 /**
- * API拦截器配置
+ * 拦截器配置
  */
 @Configuration
 public class InterceptorConfig implements WebMvcConfigurer {
 
-    @Value("${my-server.api-context-path}")
-    private String API;
+    @Resource
+    private JwtInterceptor jwtInterceptor;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        // 拦截器注册
-        registry.addInterceptor(new JwtInterceptor())
-                .addPathPatterns("/**")
-                // 放行登录、注册请求
+        registry.addInterceptor(jwtInterceptor)
+                .addPathPatterns("/**") // 拦截所有请求
+                // ↓↓↓↓↓↓ 重点：在这里添加放行路径 ↓↓↓↓↓↓
                 .excludePathPatterns(
-                        API + "/user/login",
-                        API + "/user/register",
-                        API + "/file/upload",
-                        API + "/file/getFile"
+                        "/user/login",       // 账号登录
+                        "/user/register",    // 用户注册
+                        "/user/faceLogin",   // 【新增】刷脸登录 (必须放行，因为还没Token)
+                        "/user/addFace",     // 【新增】人脸录入 (必须放行，注册时还没Token)
+                        "/file/**",          // 文件访问
+                        "/doc.html",         // Swagger文档
+                        "/webjars/**",
+                        "/swagger-resources/**"
                 );
     }
 }

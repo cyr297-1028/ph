@@ -27,6 +27,6 @@ tencentcloudapi:
   #请求官方地址
   endpoint: iai.tencentcloudapi.com
   #地域
-  region: ap-shenzhen
+  region: ap-guangzhou
 
 
