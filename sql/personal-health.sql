@@ -17,7 +17,7 @@
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
---人脸表
+-- 人脸表
 create table face(
     fid int primary key auto_increment COMMENT '主键',
     face_base longtext COMMENT '人脸图片的base64编码',
@@ -31,7 +31,7 @@ create table face(
     update_extend3 varchar(300) COMMENT '扩展字段3'
 );
 
---验证日志表
+-- 验证日志表
 create table face_vef_log(
     lid int primary key auto_increment COMMENT '主键',
     vef_time datetime COMMENT '验证时间',
@@ -271,13 +271,14 @@ CREATE TABLE `user`  (
 -- ----------------------------
 -- Records of user
 -- ----------------------------
-INSERT INTO `user` VALUES (1, 'admin', '吃羊肉', '123456', 'http://localhost:21090/api/personal-heath/v1.0/file/getFile?fileName=69fde783.png', '2602198088@qq.com', 1, 0, 0, '2025-07-09 12:53:05');
-INSERT INTO `user` VALUES (3, 'yangshu', '段誉', '123456', 'http://localhost:21090/api/personal-heath/v1.0/file/getFile?fileName=f912afb4.png', '??@qq.com', 2, 0, 0, '2025-10-07 23:59:31');
-INSERT INTO `user` VALUES (9, 'wanghai', '大春', '123456', 'http://localhost:21090/api/personal-heath/v1.0/file/getFile?fileName=b40ef5dSnipaste_2024-11-29_18-23-18.png', '1243@qq.com', 1, 1, 0, '2025-10-07 23:59:31');
-INSERT INTO `user` VALUES (10, 'meihua', '梅花', '123456', 'http://localhost:21090/api/personal-heath/v1.0/file/getFile?fileName=f30d27a5.png', '156456@qq.com', 2, 0, 0, '2025-10-07 23:59:31');
-INSERT INTO `user` VALUES (12, 'zhanglan', '张兰', '123456', 'http://localhost:21090/api/personal-heath/v1.0/file/getFile?fileName=42bcf20Snipaste_2024-11-29_18-23-18.png', '43443@qq.com', 2, 0, 1, '2025-11-18 13:00:14');
-INSERT INTO `user` VALUES (13, 'chenhao', '陈浩', '123456', 'http://localhost:21090/api/personal-heath/v1.0/file/getFile?fileName=b2b19b9熊猫.png', '1567766@qq.com', 2, 0, 0, '2025-10-25 16:16:40');
-INSERT INTO `user` VALUES (14, 'liran', '李冉', '123456', 'http://localhost:21090/api/personal-heath/v1.0/file/getFile?fileName=f9275d7熊猫.png', '32323@qq.com', 1, 0, 0, '2025-11-18 13:00:14');
+INSERT INTO `user` VALUES (1, 'admin', '吃羊肉', '14e1b600b1fd579f47433b88e8d85291', 'http://localhost:21090/api/personal-heath/v1.0/file/getFile?fileName=69fde783.png', '2602198088@qq.com', 1, 0, 0, '2025-07-09 12:53:05');
+INSERT INTO `user` VALUES (3, 'sxz', '沈', '14e1b600b1fd579f47433b88e8d85291', 'http://localhost:21090/api/personal-heath/v1.0/file/getFile?fileName=f912afb4.png', '1134123@qq.com', 2, 0, 0, '2025-10-07 23:59:31');
+INSERT INTO `user` VALUES (9, 'wanghai', '大春', '14e1b600b1fd579f47433b88e8d85291', 'http://localhost:21090/api/personal-heath/v1.0/file/getFile?fileName=b40ef5dSnipaste_2024-11-29_18-23-18.png', '1243@qq.com', 1, 1, 0, '2025-10-07 23:59:31');
+INSERT INTO `user` VALUES (10, 'meihua', '梅花', '14e1b600b1fd579f47433b88e8d85291', 'http://localhost:21090/api/personal-heath/v1.0/file/getFile?fileName=f30d27a5.png', '156456@qq.com', 2, 0, 0, '2025-10-07 23:59:31');
+INSERT INTO `user` VALUES (12, 'zhanglan', '张兰', '14e1b600b1fd579f47433b88e8d85291', 'http://localhost:21090/api/personal-heath/v1.0/file/getFile?fileName=42bcf20Snipaste_2024-11-29_18-23-18.png', '43443@qq.com', 2, 0, 1, '2025-11-18 13:00:14');
+INSERT INTO `user` VALUES (17, 'guihua', '桂花', '14e1b600b1fd579f47433b88e8d85291', 'http://localhost:21090/api/personal-heath/v1.0/file/getFile?fileName=c8f2a735.png', '1212@qq.com', 2, 0, 0, '2025-11-18 13:01:18');
+INSERT INTO `user` VALUES (18, 'chenghua', '橙黄橘', '14e1b600b1fd579f47433b88e8d85291', 'http://localhost:21090/api/personal-heath/v1.0/file/getFile?fileName=360a6fa2.png', '432432@qq.com', 2, 0, 0, '2025-11-18 13:01:34');
+INSERT INTO `user` VALUES (22, 'lichun', '立春', '14e1b600b1fd579f47433b88e8d85291', 'http://localhost:21090/api/personal-heath/v1.0/file/getFile?fileName=b80205e4.png', NULL, 1, 0, 0, '2025-04-22 17:26:54');
 
 -- ----------------------------
 -- Table structure for user_health

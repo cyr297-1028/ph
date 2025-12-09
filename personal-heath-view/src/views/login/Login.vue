@@ -52,6 +52,8 @@ export default {
             act: '',
             pwd: '',
             colorLogo: 'rgb(38,38,38)',
+            isCameraOpen: false, // 控制摄像头弹窗
+            mediaStream: null    // 媒体流对象
         }
     },
     methods: {
@@ -59,6 +61,84 @@ export default {
         toDoRegister() {
             // 跳转
             this.$router.push('/register');
+        },
+        // 打开摄像头
+        async openCamera() {
+            this.isCameraOpen = true;
+            try {
+                this.mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                this.$nextTick(() => {
+                    const video = this.$refs.video;
+                    video.srcObject = this.mediaStream;
+                });
+            } catch (err) {
+                console.error("摄像头开启失败:", err);
+                this.$swal.fire({
+                    title: '错误',
+                    text: '无法访问摄像头，请检查权限或设备',
+                    icon: 'error'
+                });
+                this.isCameraOpen = false;
+            }
+        },
+        // 关闭摄像头
+        closeCamera() {
+            if (this.mediaStream) {
+                this.mediaStream.getTracks().forEach(track => track.stop());
+                this.mediaStream = null;
+            }
+            this.isCameraOpen = false;
+        },
+        // 拍照并执行人脸登录
+        captureAndLogin() {
+            const video = this.$refs.video;
+            const canvas = this.$refs.canvas;
+            
+            // 设置画布尺寸与视频一致
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            const context = canvas.getContext('2d');
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // 转换为Blob上传
+            canvas.toBlob(async (blob) => {
+                const formData = new FormData();
+                formData.append('file', blob, 'face.png');
+                
+                try {
+                    // 显示加载中
+                    this.$swal.showLoading();
+                    
+                    const { data } = await request.post('/user/faceLogin', formData, {
+                        headers: { 'Content-Type': 'multipart/form-data' }
+                    });
+                    
+                    if (data.code === 200) {
+                        this.closeCamera(); // 识别成功关闭摄像头
+                        
+                        this.$swal.fire({
+                            title: '登录成功',
+                            text: '欢迎回来',
+                            icon: 'success',
+                            timer: DELAY_TIME,
+                            showConfirmButton: false
+                        });
+                        
+                        setToken(data.data.token);
+                        setTimeout(() => {
+                            const { role } = data.data;
+                            sessionStorage.setItem('role', role);
+                            this.navigateToRole(role);
+                        }, DELAY_TIME);
+                    } else {
+                        this.$swal.fire('识别失败', data.msg, 'error');
+                    }
+                } catch (error) {
+                    console.error(error);
+                    this.$swal.fire('错误', '人脸识别服务异常', 'error');
+                }
+            }, 'image/png');
         },
         async login() {
             if (!this.act || !this.pwd) {
@@ -110,6 +190,10 @@ export default {
                     break;
             }
         },
+    },
+    // 组件销毁前确保关闭摄像头
+    beforeDestroy() {
+        this.closeCamera();
     }
 };
 </script>
@@ -362,6 +446,87 @@ export default {
 
             .health-image {
                 max-width: 200px !important;
+            }
+        }
+    }
+}
+
+.face-login-btn {
+    width: 100%;
+    margin-top: 15px;
+    height: 45px;
+    line-height: 45px;
+    background: white;
+    border: 2px solid #4ac29a;
+    color: #4ac29a;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+
+    &:hover {
+        background: #f0f9f6;
+    }
+    
+    .icon {
+        margin-right: 5px;
+    }
+}
+
+.camera-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0,0,0,0.6);
+    z-index: 999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    .camera-content {
+        background: white;
+        padding: 20px;
+        border-radius: 16px;
+        text-align: center;
+        width: 500px;
+        max-width: 90%;
+        
+        h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        .video-preview {
+            width: 100%;
+            border-radius: 8px;
+            background: #000;
+            margin-bottom: 20px;
+        }
+        
+        .camera-controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            
+            button {
+                padding: 10px 30px;
+                border-radius: 6px;
+                border: none;
+                cursor: pointer;
+                font-weight: 600;
+            }
+            
+            .capture-btn {
+                background: #4ac29a;
+                color: white;
+            }
+            
+            .cancel-btn {
+                background: #e2e8f0;
+                color: #4a5568;
             }
         }
     }
