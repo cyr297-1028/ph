@@ -4,6 +4,7 @@ import ElementUI from 'element-ui';
 import 'element-ui/lib/theme-chalk/index.css';
 import { getToken } from "@/utils/storage.js";
 import echarts from 'echarts';
+
 Vue.prototype.$echarts = echarts;
 Vue.use(ElementUI);
 Vue.use(VueRouter);

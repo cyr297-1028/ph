@@ -30,7 +30,9 @@ public class InterceptorConfig implements WebMvcConfigurer {
                         "/file/**",          // 文件访问
                         "/doc.html",         // Swagger文档
                         "/webjars/**",
-                        "/swagger-resources/**"
+                        "/swagger-resources/**",
+                        "/news/**",
+                        "/category/**"
                 );
     }
 }
