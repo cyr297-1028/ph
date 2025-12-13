@@ -7,6 +7,8 @@
                 </el-col>
                 <el-col :span="18">
                     <span style="float: right;display: flex; align-items: center; flex-wrap: wrap;">
+                        <el-button type="text" icon="el-icon-s-home" @click="goHome" style="margin-right: 20px; font-size: 16px;">返回主页</el-button>
+                        
                         <img style="width: 40px;height: 40px;border-radius: 15px;" :src="userInfo.userAvatar" />
                         <span style="margin-left: 8px;">{{ userInfo.userName }}</span>
                     </span>
@@ -106,6 +108,10 @@ export default {
         this.loadAllMessageType();
     },
     methods: {
+        // 返回用户主页方法
+        goHome() {
+            this.$router.push('/user/main');
+        },
         commentDeal(content) {
             return content.split(';');
         },

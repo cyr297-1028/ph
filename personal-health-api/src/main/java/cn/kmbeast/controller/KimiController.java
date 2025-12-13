@@ -30,7 +30,7 @@ public class KimiController {
 
     private static final MediaType mediaType = MediaType.get("application/json; charset=utf-8");
     private static final String API_URL = "https://api.moonshot.cn/v1/chat/completions";
-    private static final String API_KEY = "sk-GzQCWUJt16DmMCUYHW1W66VvFdxDooIC5GUNSu1OirpKrwOa";
+    private static final String API_KEY = "sk-erWCzbuAUBFdKQlD6jsln7HQjHRYWUJxLoWMKFXEDVOxcseE";
 
     /**
      * 构建请求体
@@ -52,8 +52,8 @@ public class KimiController {
         messages.add(userMessage);
 
         requestBody.put("messages", messages);
-        requestBody.put("model", "moonshot-v1-8k");
-        requestBody.put("temperature", 0.3); // 降低温度以获得更严谨的分析
+        requestBody.put("model", "moonshot-v1-32k");
+        requestBody.put("temperature", 0.3); 
         return requestBody;
     }
 

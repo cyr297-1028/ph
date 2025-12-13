@@ -1,3 +1,6 @@
+import { marked } from 'marked';
+import LineChart from '@/components/LineChart.vue';
+
 <template>
     <div>
         <div style="border-radius: 5px;padding: 20px 0 60px 0;width: 100%;background-color: #fafafa;">
@@ -7,15 +10,19 @@
             <div style="height: 50px;line-height: 50px;text-align: center;font-size: 30px;font-weight: bolder;">
                 每一点改变，都值得被记录。
                 <span @click="toRecord"
-                    style="cursor: pointer;;padding: 5px 10px;background-color: #000;border-radius: 5px;color: #fff;">
+                    style="cursor: pointer;padding: 5px 10px;background-color: #000;border-radius: 5px;color: #fff; font-size: 16px; vertical-align: middle;">
                     前去记录
                     <i class="el-icon-right"></i>
                 </span>
+                <span @click="openAnalysisDialog"
+                    style="cursor: pointer;padding: 5px 10px;background-color: #409EFF;border-radius: 5px;color: #fff; margin-left: 15px; font-size: 16px; vertical-align: middle;">
+                    <i class="el-icon-data-analysis"></i> 生成健康档案
+                </span>
             </div>
         </div>
+        
         <div style="padding: 30px 0;">
             <div style="margin: 20px 0;">
-                <!-- 选择具体的指标模型 -->
                 <el-select size="small" @change="modelChange(365)" v-model="userHealthQueryDto.healthModelConfigId"
                     placeholder="请选择">
                     <el-option v-for="model in usersHealthModelConfig" :key="model.id" :label="model.name"
@@ -62,7 +69,6 @@
                         </template>
                     </el-table-column>
                     <el-table-column prop="symbol" width="108" label="模型符号"></el-table-column>
-                    <!-- <el-table-column prop="valueRange" width="128" label="阈值"></el-table-column> -->
                     <el-table-column prop="name" width="88" label="状态">
                         <template slot-scope="scope">
                             <i v-if="!statusCheck(scope.row)" style="margin-right: 5px;" class="el-icon-warning"></i>
@@ -87,17 +93,36 @@
                     :total="totalItems"></el-pagination>
             </el-row>
         </div>
+
+        <el-dialog title="AI 个人健康档案与趋势分析" :visible.sync="showAnalysisDialog" width="60%" :close-on-click-modal="false">
+            <div v-loading="analyzing" element-loading-text="Kimi 正在分析您的健康数据，请稍候...">
+                <div v-if="analysisResult" class="markdown-body" v-html="renderedAnalysis" style="line-height: 1.8; padding: 10px;"></div>
+                <div v-else-if="!analyzing" style="text-align: center; padding: 40px; color: #909399;">
+                    <i class="el-icon-s-data" style="font-size: 48px; margin-bottom: 20px;"></i>
+                    <p>点击下方按钮，生成您的专属健康报告</p>
+                </div>
+            </div>
+            <span slot="footer" class="dialog-footer">
+                <el-button @click="showAnalysisDialog = false">关 闭</el-button>
+                <el-button type="primary" @click="startAnalysis" :disabled="analyzing" :loading="analyzing">
+                    {{ analysisResult ? '重新生成' : '开始分析' }}
+                </el-button>
+            </span>
+        </el-dialog>
     </div>
 </template>
+
 <script>
 import LineChart from '@/components/LineChart.vue';
+import { marked } from 'marked'; // 引入 marked 用于解析 Markdown
+
 export default {
     components: { LineChart },
     data() {
         return {
             usersHealthModelConfig: [],
             modelConfigList: [],
-            userHealthQueryDto: {}, // 查询的参数
+            userHealthQueryDto: {},
             values: [],
             dates: [],
             tableData: [],
@@ -106,7 +131,18 @@ export default {
             pageSize: 20,
             totalItems: 0,
             searchTime: [],
-            healthModelConfigId: null
+            healthModelConfigId: null,
+            // 新增数据属性
+            showAnalysisDialog: false,
+            analyzing: false,
+            analysisResult: ''
+        }
+    },
+    computed: {
+        // 计算属性：将 Markdown 转换为 HTML
+        renderedAnalysis() {
+            if (!this.analysisResult) return '';
+            return marked(this.analysisResult);
         }
     },
     created() {
@@ -114,6 +150,8 @@ export default {
         this.fetchFreshData();
     },
     methods: {
+        // ... 原有方法保持不变 ...
+
         timeChange() {
             this.current = 1;
             this.fetchFreshData();
@@ -122,11 +160,8 @@ export default {
             this.selectedRows.push(row);
             this.batchDelete();
         },
-        // 处理用户输入的值，是正常的还是异常的，给个状态
         statusCheck(data) {
-            // 用户输入的值
             const inputValue = data.value;
-            // 正常值范围
             const valueRange = data.valueRange;
             if (valueRange !== null && inputValue !== null) {
                 const aryValueRange = valueRange.split(',');
@@ -135,7 +170,6 @@ export default {
                 return (Number(inputValue) > Number(minValue) && Number(inputValue) < Number(maxValue))
             }
         },
-        // 批量删除数据
         async batchDelete() {
             if (!this.selectedRows.length) {
                 this.$message(`未选中任何数据`);
@@ -173,12 +207,10 @@ export default {
                 }
             }
         },
-        // 点击查询之后，执行的一个函数
         handleFilter() {
             this.currentPage = 1;
             this.fetchFreshData();
         },
-        // 加载用户自己的健康记录数据
         async fetchFreshData() {
             try {
                 let startTime = null;
@@ -190,7 +222,6 @@ export default {
                 }
                 const userInfo = sessionStorage.getItem('userInfo');
                 const userEntitySave = JSON.parse(userInfo);
-                // 请求参数
                 const params = {
                     current: this.currentPage,
                     size: this.pageSize,
@@ -207,55 +238,43 @@ export default {
                 console.error('查询用户健康记录信息异常:', error);
             }
         },
-        // 点击输入框里面的清除按钮
         handleFilterClear() {
             this.filterText = '';
             this.handleFilter();
         },
-        // 多选框选中
         handleSelectionChange(selection) {
             this.selectedRows = selection;
         },
-        // 条件重置
         resetQueryCondition() {
             this.searchTime = [];
             this.healthModelConfigId = null;
             this.fetchFreshData();
         },
-        // 当前页切换
         handleSizeChange(val) {
             this.pageSize = val;
             this.currentPage = 1;
             this.fetchFreshData();
         },
-        // 当前页跳转
         handleCurrentChange(val) {
             this.currentPage = val;
             this.fetchFreshData();
         },
-        // 查询用户具体记录的值，指定时间范围内
         loadUserModelHavaRecord() {
-            // 往后端什么？
             this.$axios.get(`/user-health/timeQuery/${this.userHealthQueryDto.healthModelConfigId}/${this.userHealthQueryDto.time}`).then(response => {
                 const { data } = response;
                 if (data.code === 200) {
-                    // 拿到的数据，要做可视化处理
                     this.values = data.data.map(entity => entity.value).reverse();
                     this.dates = data.data.map(entity => entity.createTime).reverse();
                 }
             })
         },
-        // 模型选中方法
         modelChange(day) {
             this.onSelectedTime(day);
             this.loadUserModelHavaRecord();
         },
-        // 表格里面的具体模型选中
         modelUserChange() {
-            // 如果想用户直接选中，数据直接回来，就要用到这一个方法
             this.fetchFreshData();
         },
-        // 查询用户自己配置的模型以及全局模型
         loadHealthModelConfig() {
             this.$axios.post("/health-model-config/modelList").then(response => {
                 const { data } = response;
@@ -266,28 +285,62 @@ export default {
                 }
             })
         },
-        // 默认加载
         defaultLoad() {
-            this.userHealthQueryDto.healthModelConfigId = this.usersHealthModelConfig[0].id;
-            this.onSelectedTime(365);
-            this.loadUserModelHavaRecord();
+            if (this.usersHealthModelConfig.length > 0) {
+                this.userHealthQueryDto.healthModelConfigId = this.usersHealthModelConfig[0].id;
+                this.onSelectedTime(365);
+                this.loadUserModelHavaRecord();
+            }
         },
-        // 折线图选择指定事件范围之后，返回的一个回调
         onSelectedTime(time) {
             this.userHealthQueryDto.time = time;
             this.loadUserModelHavaRecord();
         },
-        // 组件里面返回的数据
-        timeSelected() {
-
-        },
         toRecord() {
             this.$router.push('/record');
         },
+
+        // --- 新增方法：智能分析相关 ---
+        openAnalysisDialog() {
+            this.showAnalysisDialog = true;
+            if (!this.analysisResult) {
+                // 如果没有历史结果，可以在打开时自动分析，或者等待用户点击按钮
+                // this.startAnalysis(); 
+            }
+        },
+        async startAnalysis() {
+            this.analyzing = true;
+            this.analysisResult = ''; // 清空旧结果
+            try {
+                // 调用后端 Kimi 接口
+                const response = await this.$axios.get('/kimi/analyze');
+                const { data } = response;
+                if (data.code === 200) {
+                    this.analysisResult = data.data;
+                } else {
+                    this.$message.error(data.msg || '分析失败');
+                }
+            } catch (error) {
+                console.error('智能分析请求失败:', error);
+                this.$message.error('智能分析服务暂时不可用');
+            } finally {
+                this.analyzing = false;
+            }
+        }
     }
 };
 </script>
+
 <style scoped lang="scss">
+/* 引入一些基本的 Markdown 样式，或者您可以依赖项目中已有的样式 */
+.markdown-body ::v-deep {
+    h1, h2, h3 { margin-top: 20px; margin-bottom: 10px; font-weight: bold; }
+    p { margin-bottom: 10px; }
+    ul, ol { padding-left: 20px; margin-bottom: 10px; }
+    li { list-style-type: disc; }
+    strong { color: #333; font-weight: 700; }
+}
+
 .status-success {
     display: inline-block;
     padding: 1px 5px;
