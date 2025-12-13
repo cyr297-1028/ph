@@ -2,6 +2,7 @@ package cn.kmbeast.controller;
 
 import cn.kmbeast.context.LocalThreadHolder;
 import cn.kmbeast.pojo.api.ApiResult;
+import cn.kmbeast.pojo.api.PageResult;
 import cn.kmbeast.pojo.api.Result;
 import cn.kmbeast.pojo.dto.query.extend.UserHealthQueryDto;
 import cn.kmbeast.pojo.vo.UserHealthVO;
@@ -10,14 +11,15 @@ import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
 import okhttp3.*;
+import okhttp3.RequestBody;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import java.io.IOException;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
+
 
 @RestController
 @RequestMapping(value = "/kimi")
@@ -28,8 +30,7 @@ public class KimiController {
 
     private static final MediaType mediaType = MediaType.get("application/json; charset=utf-8");
     private static final String API_URL = "https://api.moonshot.cn/v1/chat/completions";
-    // 请替换为你的实际 API Key
-    private static final String API_KEY = "xxxx";
+    private static final String API_KEY = "sk-GzQCWUJt16DmMCUYHW1W66VvFdxDooIC5GUNSu1OirpKrwOa";
 
     /**
      * 构建请求体
@@ -40,7 +41,7 @@ public class KimiController {
 
         // System Prompt: 设定 Kimi 的角色为健康助手
         JSONObject systemMessage = new JSONObject();
-        systemMessage.put("content", "你是 Kimi，一个专业的个人健康助手。请根据用户提供的健康监测数据，从医学角度进行客观、科学的趋势分析，并生成一份简要的个人健康档案。请指出异常指标，识别潜在风险，并给出生活方式或就医建议。回答要条理清晰，语气亲切。Moonshot AI 为专有名词，不可翻译成其他语言。");
+        systemMessage.put("content", "你是 Kimi，一个专业的个人健康助手。请根据用户提供的健康监测数据，从医学角度进行客观、科学的趋势分析，并生成一份简要的个人健康档案。请指出异常指标，识别潜在风险，并给出生活方式或就医建议。回答要条理清晰，语气亲切。可以使用 Markdown 格式渲染。");
         systemMessage.put("role", "system");
         messages.add(systemMessage);
 
@@ -61,7 +62,7 @@ public class KimiController {
      */
     private static String sendPostRequest(JSONObject jsonBody) throws IOException {
         OkHttpClient client = new OkHttpClient.Builder()
-                .connectTimeout(2, TimeUnit.MINUTES)
+                .connectTimeout(2, TimeUnit.MINUTES) // 分析可能需要较长时间，增加超时
                 .readTimeout(2, TimeUnit.MINUTES)
                 .writeTimeout(2, TimeUnit.MINUTES)
                 .build();
@@ -73,7 +74,7 @@ public class KimiController {
                 .addHeader("Authorization", "Bearer " + API_KEY)
                 .build();
         try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful()) throw new IOException("Unexpected code " + response);
+            if (!response.isSuccessful()) throw new IOException("请求 Kimi 失败: " + response);
             return response.body().string();
         }
     }
@@ -83,21 +84,13 @@ public class KimiController {
      */
     private static String parse(String jsonResponse){
         JSONObject jsonObject = JSON.parseObject(jsonResponse);
+        if (jsonObject.containsKey("error")) {
+            return "API 调用出错: " + jsonObject.getJSONObject("error").getString("message");
+        }
         JSONArray choices = jsonObject.getJSONArray("choices");
         JSONObject choice = choices.getJSONObject(0);
         JSONObject message = choice.getJSONObject("message");
         return message.getString("content");
-    }
-
-    /**
-     * 通用的问答接口
-     */
-    @PostMapping(value = "/seek")
-    public Result<String> ask(@RequestBody Map<String, String> request) throws IOException {
-        JSONObject requestBody = createRequestBody(request.get("question"));
-        String response = sendPostRequest(requestBody);
-        String parseJson = parse(response);
-        return ApiResult.success(parseJson);
     }
 
     /**
@@ -115,12 +108,19 @@ public class KimiController {
         // 2. 查询该用户的所有健康记录
         UserHealthQueryDto queryDto = new UserHealthQueryDto();
         queryDto.setUserId(userId);
-        // 这里可以根据需要限制查询数量，例如最近 50 条，避免 token 超限
-        // queryDto.setPage(1);
+        // 如果需要限制条数，可以在 DTO 中设置分页参数
+        // queryDto.setCurrent(1);
         // queryDto.setSize(50);
 
         Result<List<UserHealthVO>> queryResult = userHealthService.query(queryDto);
-        List<UserHealthVO> healthDataList = queryResult.getData();
+        List<UserHealthVO> healthDataList = null;
+
+        // Result 类本身没有 getData()，需要判断实际类型并强转
+        if (queryResult instanceof PageResult) {
+            healthDataList = ((PageResult<List<UserHealthVO>>) queryResult).getData();
+        } else if (queryResult instanceof ApiResult) {
+            healthDataList = ((ApiResult<List<UserHealthVO>>) queryResult).getData();
+        }
 
         if (healthDataList == null || healthDataList.isEmpty()) {
             return ApiResult.success("您暂时还没有录入足够的健康数据，无法进行分析。请先去【用户健康管理】记录您的身体指标吧！");
@@ -128,28 +128,34 @@ public class KimiController {
 
         // 3. 格式化数据为 Prompt
         StringBuilder promptBuilder = new StringBuilder();
-        promptBuilder.append("请根据我以下的健康监测记录，生成一份【个人健康档案】和【健康趋势分析报告】：\n\n");
+        promptBuilder.append("这是我的近期健康监测记录，请帮我生成一份【个人健康档案】和【健康趋势分析报告】。重点关注数值的变化趋势和异常项：\n\n");
 
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
-        for (UserHealthVO data : healthDataList) {
-            promptBuilder.append(String.format("- 时间：%s | 项目：%s | 数值：%s %s (参考范围：%s)\n",
+        // 限制投喂的数据量，取最近的 30-50 条即可，防止 Prompt 过长
+        int limit = Math.min(healthDataList.size(), 50);
+        for (int i = 0; i < limit; i++) {
+            UserHealthVO data = healthDataList.get(i);
+            promptBuilder.append(String.format("- 时间：%s | 项目：%s | 数值：%s %s (正常范围：%s)\n",
                     data.getCreateTime().format(formatter),
                     data.getName(),
                     data.getValue(),
                     data.getUnit(),
-                    data.getValueRange()
+                    data.getValueRange() == null ? "无" : data.getValueRange()
             ));
         }
 
-        promptBuilder.append("\n请重点分析数值变化趋势，指出是否存在异常风险，并给出饮食和运动建议。");
+        promptBuilder.append("\n请分点回答，包括：1. 总体健康评分（满分100估算）；2. 异常指标解读；3. 趋势风险预警；4. 针对性的饮食运动建议。");
 
         // 4. 调用 Kimi API
-        JSONObject requestBody = createRequestBody(promptBuilder.toString());
-        String response = sendPostRequest(requestBody);
-        String analysisResult = parse(response);
-
-        // 5. 返回分析结果
-        return ApiResult.success(analysisResult);
+        try {
+            JSONObject requestBody = createRequestBody(promptBuilder.toString());
+            String response = sendPostRequest(requestBody);
+            String analysisResult = parse(response);
+            return ApiResult.success(analysisResult);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ApiResult.error("智能分析服务暂时繁忙，请稍后再试");
+        }
     }
 }
