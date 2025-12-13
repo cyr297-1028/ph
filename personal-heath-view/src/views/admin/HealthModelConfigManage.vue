@@ -6,6 +6,18 @@
                     v-model="healthModelConfigQueryDto.name" placeholder="配置名" clearable @clear="handleFilterClear">
                     <el-button slot="append" @click="handleFilter" icon="el-icon-search"></el-button>
                 </el-input>
+
+                <span style="float: right; margin-left: 10px;">
+                    <el-upload
+        action=""
+        :auto-upload="false"
+        :show-file-list="false"
+        accept=".xlsx, .xls"
+        :on-change="handleImport">
+        <el-button size="small" type="success" icon="el-icon-upload2">导入模型</el-button>
+                     </el-upload>
+                </span>
+
                 <span style="float: right;">
                     <el-button size="small"
                         style="background-color: rgb(96, 98, 102);color: rgb(247,248,249);border: none;"
@@ -178,6 +190,63 @@ export default {
             this.healthModelConfigQueryDto = {};
             this.searchTime = [];
             this.fetchFreshData();
+        },
+        // 处理 Excel 导入
+        async handleImport(file) {
+            const types = file.name.split('.')[1];
+            const fileType = ['xlsx', 'xlc', 'xlm', 'xls', 'xlt', 'xlw', 'csv'].some(item => item === types);
+            if (!fileType) {
+                this.$message('格式错误！请重新选择');
+                return;
+            }
+            
+            // 1. 读取文件
+            const reader = new FileReader();
+            reader.readAsBinaryString(file.raw);
+            
+            reader.onload = async (e) => {
+                try {
+                    const data = e.target.result;
+                    const workbook = XLSX.read(data, { type: 'binary' });
+                    // 取第一张表
+                    const wsname = workbook.SheetNames[0];
+                    const sheet = XLSX.utils.sheet_to_json(workbook.Sheets[wsname]);
+                    
+                    // 2. 转换字段 (中文表头 -> 英文属性)
+                    // 假设 Excel 表头为：配置名, 单位, 符号, 阈值, 简介, 图标(选填)
+                    const list = sheet.map(item => {
+                        return {
+                            name: item['配置名'],
+                            unit: item['单位'],
+                            symbol: item['符号'],
+                            valueRange: item['阈值'], // 格式如 "10,50"
+                            detail: item['简介'],
+                            cover: item['图标'] || '' // 如果没有图标，给空字符串
+                        }
+                    });
+
+                    // 简单校验
+                    if (list.length === 0) {
+                        this.$message.warning("表格为空或格式不正确");
+                        return;
+                    }
+
+                    // 3. 发送请求给后端
+                    // 注意：这里是管理员页面，调用管理员的批量接口
+                    // 如果是用户端页面，请改为 /health-model-config/batchImport
+                    const res = await this.$axios.post('/health-model-config/config/batchImport', list);
+                    
+                    if (res.data.code === 200) {
+                        this.$message.success(`成功导入 ${list.length} 条模型数据`);
+                        this.fetchFreshData(); // 刷新表格
+                    } else {
+                        this.$message.error(res.data.msg || '导入失败');
+                    }
+                } catch (err) {
+                    console.error(err);
+                    this.$message.error('文件解析失败，请检查 Excel 格式');
+                }
+            };
         },
         // 修改信息
         async updateOperation() {

@@ -21,6 +21,31 @@ public class HealthModelConfigController {
 
     @Resource
     private HealthModelConfigService healthModelConfigService;
+    
+    /**
+     * 批量导入健康模型 (用户端 - 私有模型)
+     *
+     * @param list 模型列表
+     * @return Result<Void>
+     */
+    @PostMapping(value = "/batchImport")
+    public Result<Void> batchImport(@RequestBody List<HealthModelConfig> list) {
+        // 用户导入的强制设为非全局
+        return healthModelConfigService.batchSave(list, false);
+    }
+
+    /**
+     * 批量导入健康模型 (管理端 - 全局模型)
+     *
+     * @param list 模型列表
+     * @return Result<Void>
+     */
+    @Protector(role = "管理员") // 权限控制
+    @PostMapping(value = "config/batchImport")
+    public Result<Void> configBatchImport(@RequestBody List<HealthModelConfig> list) {
+        // 管理员导入的设为全局
+        return healthModelConfigService.batchSave(list, true);
+    }
 
     /**
      * 健康模型新增

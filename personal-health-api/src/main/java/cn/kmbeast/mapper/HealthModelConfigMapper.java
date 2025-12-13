@@ -21,4 +21,10 @@ public interface HealthModelConfigMapper {
 
     Integer queryCount(HealthModelConfigQueryDto healthModelConfigQueryDto);
 
+    /**
+     * 批量保存
+     * @param list 模型列表
+     */
+    void batchSave(@Param("list") List<HealthModelConfig> list);
+
 }

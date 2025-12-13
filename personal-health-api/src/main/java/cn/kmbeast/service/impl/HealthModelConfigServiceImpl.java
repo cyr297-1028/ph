@@ -25,6 +25,49 @@ public class HealthModelConfigServiceImpl implements HealthModelConfigService {
     @Resource
     private HealthModelConfigMapper healthModelConfigMapper;
 
+    @Override
+    public Result<Void> batchSave(List<HealthModelConfig> list, Boolean isGlobal) {
+        if (list == null || list.isEmpty()) {
+            return ApiResult.error("导入数据不能为空");
+        }
+
+        // 获取当前操作人的ID
+        Integer currentUserId = LocalThreadHolder.getUserId();
+
+        // 预处理数据
+        // 建议使用迭代器或者新集合过滤掉不合法的数据，防止空指针或插入失败
+        List<HealthModelConfig> validList = new ArrayList<>();
+
+        for (HealthModelConfig config : list) {
+            // 简单校验必填项 (可根据需求决定是跳过还是直接报错返回)
+            if (!StringUtils.hasText(config.getName()) ||
+                    !StringUtils.hasText(config.getUnit()) ||
+                    !StringUtils.hasText(config.getSymbol()) ||
+                    !StringUtils.hasText(config.getValueRange())) {
+                continue; // 跳过不完整的数据
+            }
+
+            // 处理中文逗号兼容性
+            if (config.getValueRange().contains("，")) {
+                config.setValueRange(config.getValueRange().replace("，", ","));
+            }
+
+            // 设置关键字段
+            config.setUserId(currentUserId);
+            config.setIsGlobal(isGlobal); // 根据传入参数决定是否全局
+
+            validList.add(config);
+        }
+
+        if (validList.isEmpty()) {
+            return ApiResult.error("没有有效的模型数据可导入");
+        }
+
+        // 调用Mapper进行批量插入
+        healthModelConfigMapper.batchSave(validList);
+        return ApiResult.success();
+    }
+
     /**
      * 健康模型新增
      *

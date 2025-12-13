@@ -23,5 +23,12 @@ public interface HealthModelConfigService {
 
     Result<List<HealthModelConfigVO>> modelList();
 
+    /**
+     * 批量新增健康模型
+     * @param list 模型数据列表
+     * @param isGlobal 是否为全局模型
+     * @return Result<Void>
+     */
+    Result<Void> batchSave(List<HealthModelConfig> list, Boolean isGlobal);
 
 }

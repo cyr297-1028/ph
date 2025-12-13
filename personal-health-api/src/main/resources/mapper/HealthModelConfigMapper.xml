@@ -7,6 +7,14 @@
         VALUES (#{userId}, #{name}, #{detail}, #{cover}, #{unit}, #{symbol}, #{valueRange}, #{isGlobal})
     </insert>
 
+    <insert id="batchSave">
+        INSERT INTO health_model_config (user_id, name, detail, cover, unit, symbol, value_range, is_global)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.userId}, #{item.name}, #{item.detail}, #{item.cover}, #{item.unit}, #{item.symbol}, #{item.valueRange}, #{item.isGlobal})
+        </foreach>
+    </insert>
+
     <update id="update">
         UPDATE health_model_config
         <set>
