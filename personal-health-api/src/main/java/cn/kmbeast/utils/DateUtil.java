@@ -6,7 +6,9 @@ import cn.kmbeast.pojo.vo.ChartVO;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId; // 新增导入
 import java.util.ArrayList;
+import java.util.Date;   // 新增导入
 import java.util.List;
 
 /**
@@ -14,30 +16,16 @@ import java.util.List;
  */
 public class DateUtil {
 
-    /**
-     * 构造时间查询器，即指定的开始时间、结束时间
-     *
-     * @param days 时间范围
-     * @return PagerDTO
-     */
     public static QueryDto startAndEndTime(Integer days) {
-        // 查全部
         if (days == -1) {
             return new QueryDto();
         }
         LocalDateTime now = LocalDateTime.now();
-        LocalDateTime nextDayStart = now.minusDays(days).plusDays(1).with(LocalTime.of(0, 0)); // 下一天的开始时间
+        LocalDateTime nextDayStart = now.minusDays(days).plusDays(1).with(LocalTime.of(0, 0));
         LocalDateTime daysAgoEnd = nextDayStart.minusSeconds(1);
         return QueryDto.builder().startTime(daysAgoEnd).endTime(now).build();
     }
 
-    /**
-     * 统计指定天数内的记录数
-     *
-     * @param dayRange 往前查多少天
-     * @param dates    数据源
-     * @return Map<String, Integer>
-     */
     public static List<ChartVO> countDatesWithinRange(Integer dayRange, List<LocalDateTime> dates) {
         LocalDate startDate = LocalDate.now().minusDays(dayRange);
         List<ChartVO> chartVOS = new ArrayList<>();
@@ -52,5 +40,15 @@ public class DateUtil {
             }
         }
         return chartVOS;
+    }
+
+    /**
+     * Date 转 LocalDateTime
+     */
+    public static LocalDateTime dateToLocalDateTime(Date date) {
+        if (date == null) {
+            return null;
+        }
+        return date.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
     }
 }

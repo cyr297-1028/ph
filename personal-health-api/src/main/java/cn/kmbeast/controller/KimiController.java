@@ -53,7 +53,7 @@ public class KimiController {
 
         requestBody.put("messages", messages);
         requestBody.put("model", "moonshot-v1-32k");
-        requestBody.put("temperature", 0.3); 
+        requestBody.put("temperature", 0.3);
         return requestBody;
     }
 

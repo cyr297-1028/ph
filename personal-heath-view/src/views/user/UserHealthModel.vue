@@ -1,6 +1,3 @@
-import { marked } from 'marked';
-import LineChart from '@/components/LineChart.vue';
-
 <template>
     <div>
         <div style="border-radius: 5px;padding: 20px 0 60px 0;width: 100%;background-color: #fafafa;">
@@ -14,6 +11,7 @@ import LineChart from '@/components/LineChart.vue';
                     前去记录
                     <i class="el-icon-right"></i>
                 </span>
+                
                 <span @click="openAnalysisDialog"
                     style="cursor: pointer;padding: 5px 10px;background-color: #409EFF;border-radius: 5px;color: #fff; margin-left: 15px; font-size: 16px; vertical-align: middle;">
                     <i class="el-icon-data-analysis"></i> 生成健康档案
@@ -114,7 +112,7 @@ import LineChart from '@/components/LineChart.vue';
 
 <script>
 import LineChart from '@/components/LineChart.vue';
-import { marked } from 'marked'; // 引入 marked 用于解析 Markdown
+import { marked } from 'marked';
 
 export default {
     components: { LineChart },
@@ -132,14 +130,12 @@ export default {
             totalItems: 0,
             searchTime: [],
             healthModelConfigId: null,
-            // 新增数据属性
             showAnalysisDialog: false,
             analyzing: false,
             analysisResult: ''
         }
     },
     computed: {
-        // 计算属性：将 Markdown 转换为 HTML
         renderedAnalysis() {
             if (!this.analysisResult) return '';
             return marked(this.analysisResult);
@@ -150,25 +146,54 @@ export default {
         this.fetchFreshData();
     },
     methods: {
-        // ... 原有方法保持不变 ...
-
         timeChange() {
-            this.current = 1;
+            this.currentPage = 1;
             this.fetchFreshData();
         },
         handleDelete(row) {
-            this.selectedRows.push(row);
+            this.selectedRows = [row];
             this.batchDelete();
         },
+        /**
+         * 状态检查逻辑：
+         * 返回 true 表示正常，返回 false 表示异常。
+         * 逻辑：只要无法判断（无阈值、非数值），一律视为正常，避免误报。
+         */
         statusCheck(data) {
-            const inputValue = data.value;
-            const valueRange = data.valueRange;
-            if (valueRange !== null && inputValue !== null) {
-                const aryValueRange = valueRange.split(',');
-                const minValue = aryValueRange[0];
-                const maxValue = aryValueRange[1];
-                return (Number(inputValue) > Number(minValue) && Number(inputValue) < Number(maxValue))
+            let { value, valueRange } = data;
+
+            // 1. 无阈值，或阈值字符串为空/null -> 正常
+            if (!valueRange || String(valueRange).trim() === '' || valueRange === 'null') {
+                return true; 
             }
+
+            // 2. 无输入值 -> 正常
+            if (value === null || value === undefined || String(value).trim() === '') {
+                return true;
+            }
+
+            // 3. 处理中文逗号兼容性
+            valueRange = valueRange.replace('，', ',');
+            
+            // 如果没有逗号分隔符，视为无效阈值 -> 正常
+            if (valueRange.indexOf(',') === -1) {
+                return true;
+            }
+
+            const parts = valueRange.split(',');
+            // 使用 parseFloat 解析，如果是文本会变成 NaN
+            const min = parseFloat(parts[0]);
+            const max = parseFloat(parts[1]);
+            const val = parseFloat(value);
+
+            // 4. 关键：非数值检查
+            // 如果输入的是文字（如"良好"），或者阈值不是数字 -> 正常
+            if (isNaN(val) || isNaN(min) || isNaN(max)) {
+                return true;
+            }
+
+            // 5. 只有当三者都是有效数字时，才进行范围判定 (包含边界值)
+            return val >= min && val <= max;
         },
         async batchDelete() {
             if (!this.selectedRows.length) {
@@ -260,6 +285,7 @@ export default {
             this.fetchFreshData();
         },
         loadUserModelHavaRecord() {
+            if (!this.userHealthQueryDto.healthModelConfigId) return;
             this.$axios.get(`/user-health/timeQuery/${this.userHealthQueryDto.healthModelConfigId}/${this.userHealthQueryDto.time}`).then(response => {
                 const { data } = response;
                 if (data.code === 200) {
@@ -299,20 +325,13 @@ export default {
         toRecord() {
             this.$router.push('/record');
         },
-
-        // --- 新增方法：智能分析相关 ---
         openAnalysisDialog() {
             this.showAnalysisDialog = true;
-            if (!this.analysisResult) {
-                // 如果没有历史结果，可以在打开时自动分析，或者等待用户点击按钮
-                // this.startAnalysis(); 
-            }
         },
         async startAnalysis() {
             this.analyzing = true;
-            this.analysisResult = ''; // 清空旧结果
+            this.analysisResult = ''; 
             try {
-                // 调用后端 Kimi 接口
                 const response = await this.$axios.get('/kimi/analyze');
                 const { data } = response;
                 if (data.code === 200) {
@@ -332,7 +351,6 @@ export default {
 </script>
 
 <style scoped lang="scss">
-/* 引入一些基本的 Markdown 样式，或者您可以依赖项目中已有的样式 */
 .markdown-body ::v-deep {
     h1, h2, h3 { margin-top: 20px; margin-bottom: 10px; font-weight: bold; }
     p { margin-bottom: 10px; }

@@ -6,6 +6,7 @@ import cn.kmbeast.mapper.UserHealthMapper;
 import cn.kmbeast.pojo.api.ApiResult;
 import cn.kmbeast.pojo.api.PageResult;
 import cn.kmbeast.pojo.api.Result;
+import cn.kmbeast.pojo.dto.importer.UserHealthExcelDTO;
 import cn.kmbeast.pojo.dto.query.base.QueryDto;
 import cn.kmbeast.pojo.dto.query.extend.HealthModelConfigQueryDto;
 import cn.kmbeast.pojo.dto.query.extend.UserHealthQueryDto;
@@ -20,13 +21,25 @@ import cn.kmbeast.pojo.vo.UserHealthVO;
 import cn.kmbeast.service.MessageService;
 import cn.kmbeast.service.UserHealthService;
 import cn.kmbeast.utils.DateUtil;
+import com.alibaba.excel.EasyExcel;
+import com.alibaba.excel.write.handler.SheetWriteHandler;
+import com.alibaba.excel.write.metadata.holder.WriteSheetHolder;
+import com.alibaba.excel.write.metadata.holder.WriteWorkbookHolder;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.util.CellRangeAddressList;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.net.URLEncoder;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -43,11 +56,85 @@ public class UserHealthServiceImpl implements UserHealthService {
     private MessageService messageService;
 
     /**
-     * 用户健康记录新增
-     *
-     * @param userHealths 参数
-     * @return Result<Void>
+     * 导出带有下拉选项的 Excel 模板
      */
+    @Override
+    public void exportTemplate(HttpServletResponse response) {
+        try {
+            HealthModelConfigQueryDto queryDto = new HealthModelConfigQueryDto();
+            List<HealthModelConfigVO> configs = healthModelConfigMapper.query(queryDto);
+            List<String> modelNames = configs.stream()
+                    .map(HealthModelConfigVO::getName)
+                    .collect(Collectors.toList());
+
+            response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            response.setCharacterEncoding("utf-8");
+            String fileName = URLEncoder.encode("健康记录导入模板", "UTF-8").replaceAll("\\+", "%20");
+            response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + fileName + ".xlsx");
+
+            EasyExcel.write(response.getOutputStream(), UserHealthExcelDTO.class)
+                    .registerWriteHandler(new DropdownWriteHandler(modelNames))
+                    .sheet("导入模板")
+                    .doWrite(new ArrayList<>());
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * 一键导入健康记录
+     */
+    @Override
+    public Result<Void> importData(MultipartFile file) {
+        try {
+            List<UserHealthExcelDTO> list = EasyExcel.read(file.getInputStream())
+                    .head(UserHealthExcelDTO.class)
+                    .sheet()
+                    .doReadSync();
+
+            if (CollectionUtils.isEmpty(list)) {
+                return ApiResult.error("文件内容为空");
+            }
+
+            Integer userId = LocalThreadHolder.getUserId();
+            HealthModelConfigQueryDto queryDto = new HealthModelConfigQueryDto();
+            List<HealthModelConfigVO> configs = healthModelConfigMapper.query(queryDto);
+            Map<String, Integer> configMap = configs.stream()
+                    .collect(Collectors.toMap(HealthModelConfigVO::getName, HealthModelConfigVO::getId, (k1, k2) -> k1));
+
+            List<UserHealth> saveList = new ArrayList<>();
+
+            for (UserHealthExcelDTO dto : list) {
+                Integer configId = configMap.get(dto.getModelName());
+                if (configId == null) {
+                    continue;
+                }
+                UserHealth userHealth = new UserHealth();
+                userHealth.setUserId(userId);
+                userHealth.setHealthModelConfigId(configId);
+
+                if (dto.getValue() != null) {
+                    userHealth.setValue(String.valueOf(dto.getValue()));
+                }
+
+                userHealth.setCreateTime(dto.getCreateTime() != null ?
+                        DateUtil.dateToLocalDateTime(dto.getCreateTime()) : LocalDateTime.now());
+
+                saveList.add(userHealth);
+            }
+
+            if (!CollectionUtils.isEmpty(saveList)) {
+                this.save(saveList);
+            }
+            return ApiResult.success();
+
+        } catch (IOException e) {
+            e.printStackTrace();
+            return ApiResult.error("文件解析失败");
+        }
+    }
+
     @Override
     public Result<Void> save(List<UserHealth> userHealths) {
         dealMessage(userHealths);
@@ -58,117 +145,72 @@ public class UserHealthServiceImpl implements UserHealthService {
 
     public void dealRole(List<UserHealth> userHealths) {
         LocalDateTime nowTime = LocalDateTime.now();
-        // 获取当前用户的ID
         Integer userId = LocalThreadHolder.getUserId();
         userHealths.forEach(userHealth -> {
             userHealth.setUserId(userId);
-            userHealth.setCreateTime(nowTime);
+            if (userHealth.getCreateTime() == null) {
+                userHealth.setCreateTime(nowTime);
+            }
         });
     }
 
     /**
-     * 如果有异常指标情况，此方法做通知转发
-     *
-     * @param userHealths 用户健康记录集合
+     * 处理异常指标通知
      */
     private void dealMessage(List<UserHealth> userHealths) {
         List<Message> messageList = new ArrayList<>();
         userHealths.forEach(userHealth -> {
-            userHealth.setCreateTime(LocalDateTime.now());
+            // 如果时间为空，补全当前时间
+            if (userHealth.getCreateTime() == null) {
+                userHealth.setCreateTime(LocalDateTime.now());
+            }
             Integer healthModelConfigId = userHealth.getHealthModelConfigId();
             HealthModelConfigQueryDto queryDto = new HealthModelConfigQueryDto();
             queryDto.setId(healthModelConfigId);
             List<HealthModelConfigVO> healthModelConfigs = healthModelConfigMapper.query(queryDto);
+
             if (!CollectionUtils.isEmpty(healthModelConfigs)) {
                 HealthModelConfig healthModelConfig = healthModelConfigs.get(0);
-                // 值范围为：101,230
                 String valueRange = healthModelConfig.getValueRange();
-                String[] values = valueRange.split(",");
-                // 最小值
-                double mixValue = Double.parseDouble(values[0]);
-                // 最大值
-                double maxValue = Double.parseDouble(values[1]);
-                // 如果用户输入的指标是超出正常范围的，需要通知用户处理
-                double value = Double.parseDouble(String.valueOf(userHealth.getValue()));
-                // 异常情况
-                if (value < mixValue || value > maxValue) {
-                    // 封装消息体
-                    Message message = sendMessage(healthModelConfig, userHealth);
-                    messageList.add(message);
+
+                // 关键修改：判断阈值是否存在且格式正确
+                if (StringUtils.hasText(valueRange) && valueRange.contains(",")) {
+                    String[] values = valueRange.split(",");
+                    try {
+                        double mixValue = Double.parseDouble(values[0]);
+                        double maxValue = Double.parseDouble(values[1]);
+                        double value = Double.parseDouble(String.valueOf(userHealth.getValue()));
+
+                        // 超出范围则预警
+                        if (value < mixValue || value > maxValue) {
+                            Message message = sendMessage(healthModelConfig, userHealth);
+                            messageList.add(message);
+                        }
+                    } catch (NumberFormatException e) {
+                        // 忽略格式错误
+                    }
                 }
             }
         });
         if (!CollectionUtils.isEmpty(messageList)) {
-            // 丢给消息业务逻辑处理
             messageService.dataWordSave(messageList);
         }
     }
 
-    /**
-     * 处理符合消息通知的用户健康记录
-     *
-     * @param userHealth 用户健康记录
-     * @return List<Message>
-     */
     private Message sendMessage(HealthModelConfig healthModelConfig, UserHealth userHealth) {
         Message message = new Message();
-        // 指标提醒类通知
         message.setMessageType(MessageType.DATA_MESSAGE.getType());
-        // 消息提醒时间
         message.setCreateTime(LocalDateTime.now());
-        // 是否已读
         message.setIsRead(IsReadEnum.READ_NO.getStatus());
-        // 接收者
         message.setReceiverId(LocalThreadHolder.getUserId());
-        // 消息体
         message.setContent("你记录的【" + healthModelConfig.getName() + "】超标了，正常值范围:[" + healthModelConfig.getValueRange() + "]，请注意休息。必要时请就医!");
         return message;
     }
 
-    /**
-     * 用户健康记录删除
-     *
-     * @param ids 参数
-     * @return Result<Void>
-     */
-    @Override
-    public Result<Void> batchDelete(List<Long> ids) {
-        userHealthMapper.batchDelete(ids);
-        return ApiResult.success();
-    }
-
-    /**
-     * 用户健康记录修改
-     *
-     * @param userHealth 参数
-     * @return Result<Void>
-     */
-    @Override
-    public Result<Void> update(UserHealth userHealth) {
-        userHealthMapper.update(userHealth);
-        return ApiResult.success();
-    }
-
-    /**
-     * 用户健康记录查询
-     *
-     * @param userHealthQueryDto 查询参数
-     * @return Result<List < UserHealthVO>>
-     */
-    @Override
-    public Result<List<UserHealthVO>> query(UserHealthQueryDto userHealthQueryDto) {
-        List<UserHealthVO> userHealthVOS = userHealthMapper.query(userHealthQueryDto);
-        Integer totalCount = userHealthMapper.queryCount(userHealthQueryDto);
-        return PageResult.success(userHealthVOS, totalCount);
-    }
-
-    /**
-     * 统计模型存量数据
-     *
-     * @return Result<List < ChartVO>> 响应结果
-     */
-    @Override
-    public Result<List<ChartVO>> daysQuery(Integer day) {
+    @Override public Result<Void> batchDelete(List<Long> ids) { userHealthMapper.batchDelete(ids); return ApiResult.success(); }
+    @Override public Result<Void> update(UserHealth userHealth) { userHealthMapper.update(userHealth); return ApiResult.success(); }
+    @Override public Result<List<UserHealthVO>> query(UserHealthQueryDto dto) { return PageResult.success(userHealthMapper.query(dto), userHealthMapper.queryCount(dto)); }
+    @Override public Result<List<ChartVO>> daysQuery(Integer day) {
         QueryDto queryDto = DateUtil.startAndEndTime(day);
         UserHealthQueryDto userHealthQueryDto = new UserHealthQueryDto();
         userHealthQueryDto.setStartTime(queryDto.getStartTime());
@@ -179,5 +221,30 @@ public class UserHealthServiceImpl implements UserHealthService {
         return ApiResult.success(chartVOS);
     }
 
-
+    public static class DropdownWriteHandler implements SheetWriteHandler {
+        private final List<String> options;
+        public DropdownWriteHandler(List<String> options) { this.options = options; }
+        @Override public void beforeSheetCreate(WriteWorkbookHolder h, WriteSheetHolder s) {}
+        @Override public void afterSheetCreate(WriteWorkbookHolder h, WriteSheetHolder s) {
+            if (options == null || options.isEmpty()) return;
+            Workbook workbook = h.getWorkbook();
+            Sheet sheet = s.getSheet();
+            String hiddenSheetName = "HiddenModelOptions";
+            Sheet hiddenSheet = workbook.createSheet(hiddenSheetName);
+            workbook.setSheetHidden(workbook.getSheetIndex(hiddenSheet), true);
+            for (int i = 0; i < options.size(); i++) {
+                hiddenSheet.createRow(i).createCell(0).setCellValue(options.get(i));
+            }
+            Name categoryName = workbook.createName();
+            categoryName.setNameName("ModelNameList");
+            categoryName.setRefersToFormula(hiddenSheetName + "!$A$1:$A$" + options.size());
+            DataValidationHelper helper = sheet.getDataValidationHelper();
+            DataValidationConstraint constraint = helper.createFormulaListConstraint("ModelNameList");
+            CellRangeAddressList addressList = new CellRangeAddressList(1, 1000, 0, 0);
+            DataValidation validation = helper.createValidation(constraint, addressList);
+            validation.createErrorBox("输入错误", "请从下拉列表中选择有效的健康模型名称");
+            validation.setShowErrorBox(true);
+            sheet.addValidationData(validation);
+        }
+    }
 }

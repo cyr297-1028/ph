@@ -110,7 +110,8 @@ export default {
     methods: {
         // 返回用户主页方法
         goHome() {
-            this.$router.push('/user/main');
+            
+            this.$router.push('/news-record');
         },
         commentDeal(content) {
             return content.split(';');

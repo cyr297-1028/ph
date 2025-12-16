@@ -64,10 +64,23 @@
                 </el-col>
                 <el-col :span="18">
                     <div style="padding: 0 150px;box-sizing: border-box;">
-                        <div style="padding: 15px 0;font-size:24px;">
-                            数据录入面板
-                            <span @click="clearData" style="font-size: 14px;margin-left: 20px;">重置</span>
+                        <div
+                            style="padding: 15px 0;font-size:24px; display: flex; align-items: center; justify-content: space-between;">
+                            <span>数据录入面板
+                                <span @click="clearData"
+                                    style="font-size: 14px;margin-left: 20px;cursor: pointer;color: #999;">重置</span>
+                            </span>
+
+                            <div style="display: flex; gap: 10px;">
+                                <el-button size="small" type="text" @click="downloadTemplate">下载模板</el-button>
+                                <el-upload action="/api/personal-heath/v1.0/user-health/import" :headers="headers"
+                                    :show-file-list="false" :on-success="handleImportSuccess"
+                                    :on-error="handleImportError" accept=".xlsx, .xls">
+                                    <el-button size="small" type="primary" icon="el-icon-upload2">一键导入</el-button>
+                                </el-upload>
+                            </div>
                         </div>
+
                         <el-row>
                             <el-row v-if="selectedModel.length === 0">
                                 <el-empty description="快选中模型记录吧"></el-empty>
@@ -98,7 +111,6 @@
             </div>
             <div style="padding:0 20px;">
                 <p>*图标</p>
-                <!-- 图标 -->
                 <el-row style="margin-top: 10px;">
                     <el-upload class="avatar-uploader" action="/api/personal-heath/v1.0/file/upload"
                         :show-file-list="false" :on-success="handleAvatarSuccess">
@@ -106,35 +118,30 @@
                         <i v-else class="el-icon-plus avatar-uploader-icon"></i>
                     </el-upload>
                 </el-row>
-                <!-- 配置名 -->
                 <el-row style="padding: 0 10px 0 0;">
                     <p>
                         <span class="modelName">*配置名</span>
                     </p>
                     <input class="input-title" v-model="data.name" placeholder="请输入">
                 </el-row>
-                <!-- 单位 -->
                 <el-row style="padding: 0 10px 0 0;">
                     <p style="font-size: 12px;padding: 3px 0;">
                         <span class="modelName">*单位</span>
                     </p>
                     <input class="input-title" v-model="data.unit" placeholder="请输入">
                 </el-row>
-                <!-- 符号 -->
                 <el-row style="padding: 0 10px 0 0;">
                     <p style="font-size: 12px;padding: 3px 0;">
                         <span class="modelName">*符号</span>
                     </p>
                     <input class="input-title" v-model="data.symbol" placeholder="请输入">
                 </el-row>
-                <!-- 正常值 -->
                 <el-row style="padding: 0 20px 0 0;">
                     <p style="font-size: 12px;padding: 3px 0;">
                         <span class="modelName">*阈值（格式：最小值,最大值）</span>
                     </p>
                     <input class="input-title" v-model="data.valueRange" placeholder="请输入">
                 </el-row>
-                <!-- 简介 -->
                 <el-row style="padding: 0 10px 0 0;">
                     <p style="font-size: 12px;padding: 3px 0;">
                         <span class="modelName">*简介</span>
@@ -177,7 +184,56 @@ export default {
         this.getAllModelConfig();
         this.getUser();
     },
+    computed: {
+        // 获取鉴权 Token
+        headers() {
+            return {
+                token: sessionStorage.getItem("token") 
+            }
+        }
+    },
     methods: {
+        // 下载模板
+        downloadTemplate() {
+            this.$axios.get('/user-health/template', {
+                responseType: 'blob' 
+            }).then(response => {
+                const blobData = response.data ? response.data : response;
+                const blob = new Blob([blobData], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const link = document.createElement('a');
+                link.href = window.URL.createObjectURL(blob);
+                link.download = '健康记录导入模板.xlsx';
+                link.click();
+                window.URL.revokeObjectURL(link.href);
+            }).catch(error => {
+                console.error(error);
+                this.$message.error('模板下载失败');
+            });
+        },
+
+        // 导入成功回调
+        handleImportSuccess(res) {
+            if (res.code === 200) {
+                this.$swal.fire({
+                    title: '导入成功',
+                    text: '健康记录已批量导入',
+                    icon: 'success',
+                    timer: 1500
+                });
+                setTimeout(() => {
+                    this.$router.push('/user');
+                }, 2000)
+            } else {
+                this.$message.error(res.msg || '导入失败');
+            }
+        },
+
+        // 导入失败回调
+        handleImportError(err) {
+            this.$message.error('网络异常，导入失败');
+        },
+        // 注意：这里删除了错误的闭合括号 "},"
+
         async clearData() {
             const confirmed = await this.$swalConfirm({
                 title: "重置数据？",
@@ -356,7 +412,7 @@ export default {
             const userInfo = sessionStorage.getItem('userInfo');
             this.userInfo = JSON.parse(userInfo);
         },
-    },
+    }, // methods 结束的大括号在这里
 };
 </script>
 <style scoped lang="scss">

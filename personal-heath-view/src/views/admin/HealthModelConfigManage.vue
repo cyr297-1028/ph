@@ -7,15 +7,18 @@
                     <el-button slot="append" @click="handleFilter" icon="el-icon-search"></el-button>
                 </el-input>
 
-                <span style="float: right; margin-left: 10px;">
+                <span style="float: right; margin-left: 10px; display: flex; align-items: center; gap: 10px;">
                     <el-upload
-        action=""
-        :auto-upload="false"
-        :show-file-list="false"
-        accept=".xlsx, .xls"
-        :on-change="handleImport">
-        <el-button size="small" type="success" icon="el-icon-upload2">导入模型</el-button>
-                     </el-upload>
+                        action="/api/personal-heath/v1.0/health-model-config/config/import"
+                        :headers="headers"
+                        :show-file-list="false"
+                        :on-success="handleImportSuccess"
+                        :on-error="handleImportError"
+                        accept=".xlsx, .xls">
+                        <el-button size="small" type="success" icon="el-icon-upload2">导入模型</el-button>
+                    </el-upload>
+                    
+                    <el-button size="small" type="warning" plain icon="el-icon-download" @click="downloadTemplate">下载模板</el-button>
                 </span>
 
                 <span style="float: right;">
@@ -60,7 +63,6 @@
             </div>
             <div style="padding:0 20px;">
                 <p>*图标</p>
-                <!-- 图标 -->
                 <el-row style="margin-top: 10px;">
                     <el-upload class="avatar-uploader" action="/api/personal-heath/v1.0/file/upload"
                         :show-file-list="false" :on-success="handleAvatarSuccess">
@@ -68,35 +70,30 @@
                         <i v-else class="el-icon-plus avatar-uploader-icon"></i>
                     </el-upload>
                 </el-row>
-                <!-- 配置名 -->
                 <el-row style="padding: 0 10px 0 0;">
                     <p>
                         <span class="modelName">*配置名</span>
                     </p>
                     <input class="input-title" v-model="data.name" placeholder="请输入">
                 </el-row>
-                <!-- 单位 -->
                 <el-row style="padding: 0 10px 0 0;">
                     <p style="font-size: 12px;padding: 3px 0;">
                         <span class="modelName">*单位</span>
                     </p>
                     <input class="input-title" v-model="data.unit" placeholder="请输入">
                 </el-row>
-                <!-- 符号 -->
                 <el-row style="padding: 0 10px 0 0;">
                     <p style="font-size: 12px;padding: 3px 0;">
                         <span class="modelName">*符号</span>
                     </p>
                     <input class="input-title" v-model="data.symbol" placeholder="请输入">
                 </el-row>
-                <!-- 正常值 -->
                 <el-row style="padding: 0 20px 0 0;">
                     <p style="font-size: 12px;padding: 3px 0;">
                         <span class="modelName">*阈值（格式：最小值,最大值）</span>
                     </p>
                     <input class="input-title" v-model="data.valueRange" placeholder="请输入">
                 </el-row>
-                <!-- 简介 -->
                 <el-row style="padding: 0 10px 0 0;">
                     <p style="font-size: 12px;padding: 3px 0;">
                         <span class="modelName">*简介</span>
@@ -142,7 +139,46 @@ export default {
     created() {
         this.fetchFreshData();
     },
+    computed: {
+        // 获取鉴权 Token，用于上传组件
+        headers() {
+            return {
+                token: sessionStorage.getItem("token")
+            }
+        }
+    },
     methods: {
+        // 下载模板
+        downloadTemplate() {
+            this.$axios.get('/health-model-config/template', {
+                responseType: 'blob' // 必须指定 blob 类型
+            }).then(response => {
+                const blobData = response.data ? response.data : response;
+                const blob = new Blob([blobData], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const link = document.createElement('a');
+                link.href = window.URL.createObjectURL(blob);
+                link.download = '健康模型导入模板(管理员).xlsx';
+                link.click();
+                window.URL.revokeObjectURL(link.href);
+            }).catch(error => {
+                console.error(error);
+                this.$message.error('模板下载失败');
+            });
+        },
+        // 导入成功回调
+        handleImportSuccess(res) {
+            if (res.code === 200) {
+                this.$message.success('全局模型导入成功');
+                this.fetchFreshData(); // 刷新数据
+            } else {
+                this.$message.error(res.msg || '导入失败');
+            }
+        },
+        // 导入失败回调
+        handleImportError(err) {
+            this.$message.error('网络异常，导入失败');
+        },
+
         handleAvatarSuccess(res, file) {
             this.$notify({
                 duration: 2000,
@@ -190,63 +226,6 @@ export default {
             this.healthModelConfigQueryDto = {};
             this.searchTime = [];
             this.fetchFreshData();
-        },
-        // 处理 Excel 导入
-        async handleImport(file) {
-            const types = file.name.split('.')[1];
-            const fileType = ['xlsx', 'xlc', 'xlm', 'xls', 'xlt', 'xlw', 'csv'].some(item => item === types);
-            if (!fileType) {
-                this.$message('格式错误！请重新选择');
-                return;
-            }
-            
-            // 1. 读取文件
-            const reader = new FileReader();
-            reader.readAsBinaryString(file.raw);
-            
-            reader.onload = async (e) => {
-                try {
-                    const data = e.target.result;
-                    const workbook = XLSX.read(data, { type: 'binary' });
-                    // 取第一张表
-                    const wsname = workbook.SheetNames[0];
-                    const sheet = XLSX.utils.sheet_to_json(workbook.Sheets[wsname]);
-                    
-                    // 2. 转换字段 (中文表头 -> 英文属性)
-                    // 假设 Excel 表头为：配置名, 单位, 符号, 阈值, 简介, 图标(选填)
-                    const list = sheet.map(item => {
-                        return {
-                            name: item['配置名'],
-                            unit: item['单位'],
-                            symbol: item['符号'],
-                            valueRange: item['阈值'], // 格式如 "10,50"
-                            detail: item['简介'],
-                            cover: item['图标'] || '' // 如果没有图标，给空字符串
-                        }
-                    });
-
-                    // 简单校验
-                    if (list.length === 0) {
-                        this.$message.warning("表格为空或格式不正确");
-                        return;
-                    }
-
-                    // 3. 发送请求给后端
-                    // 注意：这里是管理员页面，调用管理员的批量接口
-                    // 如果是用户端页面，请改为 /health-model-config/batchImport
-                    const res = await this.$axios.post('/health-model-config/config/batchImport', list);
-                    
-                    if (res.data.code === 200) {
-                        this.$message.success(`成功导入 ${list.length} 条模型数据`);
-                        this.fetchFreshData(); // 刷新表格
-                    } else {
-                        this.$message.error(res.data.msg || '导入失败');
-                    }
-                } catch (err) {
-                    console.error(err);
-                    this.$message.error('文件解析失败，请检查 Excel 格式');
-                }
-            };
         },
         // 修改信息
         async updateOperation() {

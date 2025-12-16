@@ -3,9 +3,10 @@ package cn.kmbeast.service;
 import cn.kmbeast.pojo.api.Result;
 import cn.kmbeast.pojo.dto.query.extend.HealthModelConfigQueryDto;
 import cn.kmbeast.pojo.entity.HealthModelConfig;
-import cn.kmbeast.pojo.vo.ChartVO;
 import cn.kmbeast.pojo.vo.HealthModelConfigVO;
+import org.springframework.web.multipart.MultipartFile; // 记得导入
 
+import javax.servlet.http.HttpServletResponse;
 import java.util.List;
 
 /**
@@ -23,12 +24,19 @@ public interface HealthModelConfigService {
 
     Result<List<HealthModelConfigVO>> modelList();
 
-    /**
-     * 批量新增健康模型
-     * @param list 模型数据列表
-     * @param isGlobal 是否为全局模型
-     * @return Result<Void>
-     */
     Result<Void> batchSave(List<HealthModelConfig> list, Boolean isGlobal);
 
+    /**
+     * Excel 文件导入模型
+     * @param file Excel文件
+     * @param isGlobal 是否为全局模型
+     * @return Result
+     */
+    Result<Void> importData(MultipartFile file, Boolean isGlobal); // 增加 Boolean isGlobal 参数
+
+    /**
+     * 导出 Excel 模板
+     * @param response 响应对象
+     */
+    void exportTemplate(HttpServletResponse response);
 }

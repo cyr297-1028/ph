@@ -22,8 +22,8 @@ mybatis:
   mapper-locations: classpath:mapper/*.xml
 # 腾讯云API
 tencentcloudapi:
-  secretId: AKIDeJyZx88xZy97uUr7TebLrCNamrjSF1f6
-  secretKey: LUbVCfuyrXzGKAmAOQJzUmqgJl5FRZWJ
+  secretId: AKIDFF3e2zvkNq7C92jDWdXKuJVGtJWXL2c0
+  secretKey: vhINK4cx87tSItHTSNC0s8E9tUjpjQ5Z
   #请求官方地址
   endpoint: iai.tencentcloudapi.com
   #地域
