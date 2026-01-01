@@ -73,17 +73,19 @@
 
                             <div style="display: flex; gap: 10px;">
                                 <el-button size="small" type="text" @click="downloadTemplate">下载模板</el-button>
-                                <el-upload action="/api/personal-heath/v1.0/user-health/import" :headers="headers"
-                                    :show-file-list="false" :on-success="handleImportSuccess"
-                                    :on-error="handleImportError" accept=".xlsx, .xls">
-                                    <el-button size="small" type="primary" icon="el-icon-upload2">一键导入</el-button>
+                                <el-upload 
+                                    action="" 
+                                    :http-request="customUpload"
+                                    :show-file-list="false" 
+                                    accept=".xlsx, .xls, .jpg, .jpeg, .png, .pdf">
+                                    <el-button size="small" type="primary" icon="el-icon-camera">智能导入 / OCR</el-button>
                                 </el-upload>
                             </div>
                         </div>
 
                         <el-row>
                             <el-row v-if="selectedModel.length === 0">
-                                <el-empty description="快选中模型记录吧"></el-empty>
+                                <el-empty description="请选择模型或使用智能导入"></el-empty>
                             </el-row>
                             <el-row>
                                 <el-col :span="12" v-for="(model, index) in selectedModel" :key="index">
@@ -184,15 +186,124 @@ export default {
         this.getAllModelConfig();
         this.getUser();
     },
-    computed: {
-        // 获取鉴权 Token
-        headers() {
-            return {
-                token: sessionStorage.getItem("token") 
-            }
-        }
-    },
     methods: {
+        // 自定义上传逻辑
+        async customUpload(param) {
+            const file = param.file;
+            const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+            const isImageOrPdf = /\.(jpg|jpeg|png|pdf)$/i.test(file.name);
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // 1. 处理 Excel 导入 (保持原有逻辑)
+            if (isExcel) {
+                try {
+                    const response = await this.$axios.post('/user-health/import', formData, {
+                        headers: { 'Content-Type': 'multipart/form-data' }
+                    });
+                    if (response.data.code === 200) {
+                        this.$swal.fire({
+                            title: '导入成功',
+                            text: '健康记录已批量导入',
+                            icon: 'success',
+                            timer: 1500
+                        });
+                        setTimeout(() => { this.$router.push('/user'); }, 2000);
+                    } else {
+                        this.$message.error(response.data.msg || '导入失败');
+                    }
+                } catch (err) {
+                    this.$message.error('网络异常，导入失败');
+                }
+                return;
+            }
+
+            // 2. 处理图片/PDF OCR 识别
+            if (isImageOrPdf) {
+                const loading = this.$loading({
+                    lock: true,
+                    text: '正在进行智能识别，请稍候...',
+                    spinner: 'el-icon-loading',
+                    background: 'rgba(0, 0, 0, 0.7)'
+                });
+
+                try {
+                    const response = await this.$axios.post('/user-health/recognition', formData, {
+                        headers: { 'Content-Type': 'multipart/form-data' }
+                    });
+                    
+                    loading.close();
+                    
+                    if (response.data.code === 200) {
+                        const extractedData = response.data.data; // 假设返回 [{name: '白细胞', value: '5.2', unit: '...'}, ...]
+                        this.fillDataFromOCR(extractedData);
+                    } else {
+                        this.$message.error(response.data.msg || '识别失败');
+                    }
+                } catch (err) {
+                    loading.close();
+                    console.error(err);
+                    this.$message.error('智能识别服务异常');
+                }
+                return;
+            }
+
+            this.$message.warning('不支持的文件格式');
+        },
+
+        // 将 OCR 结果填充到页面
+        fillDataFromOCR(extractedData) {
+            if (!extractedData || extractedData.length === 0) {
+                this.$message.warning('未能识别到有效数据');
+                return;
+            }
+
+            let matchCount = 0;
+            // 遍历识别到的数据
+            extractedData.forEach(item => {
+                // 在 modelList 中查找匹配的模型 (支持名称包含匹配)
+                // item.检查项目 对应 model.name
+                // 这里假设 Python 返回的 key 为 "检查项目", "结果"
+                // 也可以让 Python 直接返回 standard 字段 name, value
+                
+                // 为了兼容性，假设 OCR 返回对象的字段是 flexible 的，这里尝试匹配
+                const itemName = item.name || item.检查项目 || item.item;
+                const itemValue = item.value || item.结果 || item.result;
+
+                if (itemName && itemValue) {
+                    // 在现有模型列表中查找
+                    const targetModel = this.modelList.find(m => 
+                        m.name === itemName || itemName.includes(m.name) || m.name.includes(itemName)
+                    );
+
+                    if (targetModel) {
+                        // 检查是否已经选中，如果没有则选中
+                        let selected = this.selectedModel.find(s => s.id === targetModel.id);
+                        if (!selected) {
+                            // 深拷贝一份模型配置，避免直接修改原对象
+                            selected = JSON.parse(JSON.stringify(targetModel));
+                            this.selectedModel.push(selected);
+                        }
+                        // 填充数值
+                        selected.value = itemValue;
+                        matchCount++;
+                    }
+                }
+            });
+
+            if (matchCount > 0) {
+                this.$notify({
+                    title: '识别成功',
+                    message: `已自动提取并填充 ${matchCount} 项数据，请核对后保存。`,
+                    type: 'success',
+                    duration: 3000
+                });
+            } else {
+                this.$message.warning('识别成功，但在当前模型库中未找到匹配的指标，请检查模型名称。');
+            }
+        },
+
         // 下载模板
         downloadTemplate() {
             this.$axios.get('/user-health/template', {
@@ -210,29 +321,6 @@ export default {
                 this.$message.error('模板下载失败');
             });
         },
-
-        // 导入成功回调
-        handleImportSuccess(res) {
-            if (res.code === 200) {
-                this.$swal.fire({
-                    title: '导入成功',
-                    text: '健康记录已批量导入',
-                    icon: 'success',
-                    timer: 1500
-                });
-                setTimeout(() => {
-                    this.$router.push('/user');
-                }, 2000)
-            } else {
-                this.$message.error(res.msg || '导入失败');
-            }
-        },
-
-        // 导入失败回调
-        handleImportError(err) {
-            this.$message.error('网络异常，导入失败');
-        },
-        // 注意：这里删除了错误的闭合括号 "},"
 
         async clearData() {
             const confirmed = await this.$swalConfirm({
@@ -412,7 +500,7 @@ export default {
             const userInfo = sessionStorage.getItem('userInfo');
             this.userInfo = JSON.parse(userInfo);
         },
-    }, // methods 结束的大括号在这里
+    },
 };
 </script>
 <style scoped lang="scss">
