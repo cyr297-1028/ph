@@ -14,7 +14,6 @@ import cn.kmbeast.utils.DateUtil;
 import cn.kmbeast.utils.IdFactoryUtil;
 import cn.kmbeast.utils.PathUtils;
 import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
 import okhttp3.*;
 import org.springframework.web.bind.annotation.*;
@@ -39,8 +38,8 @@ public class UserHealthController {
     @Resource
     private UserHealthService userHealthService;
 
-    // Python OCR 服务的地址 (请确保 Python 服务已启动)
-    private static final String PYTHON_OCR_URL = "http://localhost:8000/ocr/recognition";
+    // 修改点：这里的地址必须和 Python 代码中的 @app.post 路径一致
+    private static final String PYTHON_OCR_URL = "http://localhost:8000/ocr/medical_report";
 
     /**
      * 智能识别接口 (OCR)
@@ -51,7 +50,12 @@ public class UserHealthController {
         try {
             // 1. 保存文件到本地临时目录
             String originalFilename = file.getOriginalFilename();
-            String suffix = originalFilename.substring(originalFilename.lastIndexOf("."));
+            // 防止文件名为空
+            if (originalFilename == null) {
+                originalFilename = "temp.jpg";
+            }
+            String suffix = originalFilename.contains(".") ?
+                    originalFilename.substring(originalFilename.lastIndexOf(".")) : ".jpg";
             String fileName = IdFactoryUtil.getFileId() + suffix;
 
             File fileDir = new File(PathUtils.getClassLoadRootPath() + "/temp_ocr");
