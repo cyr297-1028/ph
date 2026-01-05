@@ -39,7 +39,7 @@ public class UserHealthController {
     private UserHealthService userHealthService;
 
     // 修改点：这里的地址必须和 Python 代码中的 @app.post 路径一致
-    private static final String PYTHON_OCR_URL = "http://localhost:8000/ocr/medical_report";
+    private static final String PYTHON_OCR_URL = "http://127.0.0.1:8000/ocr/medical_report";
 
     /**
      * 智能识别接口 (OCR)

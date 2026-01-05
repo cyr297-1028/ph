@@ -22,7 +22,7 @@ public class OcrController {
     private FileController fileController; // 复用你现有的文件上传逻辑
 
     // Python服务的地址
-    private static final String PY_OCR_URL = "http://localhost:8000/ocr/medical_report";
+    private static final String PY_OCR_URL = "http://127.0.0.1:8000/ocr/medical_report";
 
     @PostMapping("/recognition")
     public Result<Object> recognizeReport(@RequestParam("file") MultipartFile file) {
