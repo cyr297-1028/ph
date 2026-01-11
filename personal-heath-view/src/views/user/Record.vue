@@ -62,6 +62,7 @@
                         </div>
                     </div>
                 </el-col>
+
                 <el-col :span="18">
                     <div style="padding: 0 150px;box-sizing: border-box;">
                         <div
@@ -107,6 +108,7 @@
                 </el-col>
             </el-row>
         </div>
+
         <el-dialog :show-close="false" :visible.sync="dialogUserOperaion" width="26%">
             <div slot="title">
                 <p class="dialog-title">{{ !isOperation ? '健康模型新增' : '健康模型修改' }}</p>
@@ -164,6 +166,7 @@
         </el-dialog>
     </div>
 </template>
+
 <script>
 import Logo from '@/components/Logo';
 export default {
@@ -178,7 +181,7 @@ export default {
             dialogUserOperaion: false,
             isOperation: false,
             userId: null,
-            selectedModel: [],
+            selectedModel: [], // 存储已选中并需要录入数据的模型
         };
     },
     created() {
@@ -187,7 +190,7 @@ export default {
         this.getUser();
     },
     methods: {
-        // 自定义上传逻辑
+        // ================= OCR 与 文件上传核心逻辑 =================
         async customUpload(param) {
             const file = param.file;
             const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
@@ -229,64 +232,76 @@ export default {
                 });
 
                 try {
-                    const response = await this.$axios.post('/user-health/recognition', formData, {
+                    // 调用后端 OCR 接口 (请确保后端 OcrController 存在且路径正确)
+                    const response = await this.$axios.post('/ocr/recognition', formData, {
                         headers: { 'Content-Type': 'multipart/form-data' }
                     });
                     
                     loading.close();
                     
                     if (response.data.code === 200) {
-                        const extractedData = response.data.data; // 假设返回 [{name: '白细胞', value: '5.2', unit: '...'}, ...]
-                        this.fillDataFromOCR(extractedData);
+                        // 支持两种数据结构：
+                        // 1. 结构化数据 (data.structured_items) -> SMR-R1 / 规则提取
+                        // 2. 原始数据 (data.data.items) -> PaddleOCR Raw
+                        const resultData = response.data.data;
+                        const items = resultData.structured_items || resultData.items || resultData;
+                        
+                        this.fillDataFromOCR(items);
                     } else {
                         this.$message.error(response.data.msg || '识别失败');
                     }
                 } catch (err) {
                     loading.close();
                     console.error(err);
-                    this.$message.error('智能识别服务异常');
+                    this.$message.error('智能识别服务异常，请检查后端服务');
                 }
                 return;
             }
 
-            this.$message.warning('不支持的文件格式');
+            this.$message.warning('不支持的文件格式，请上传 Excel 或 图片');
         },
 
-        // 将 OCR 结果填充到页面
-        fillDataFromOCR(extractedData) {
-            if (!extractedData || extractedData.length === 0) {
-                this.$message.warning('未能识别到有效数据');
+        // 将 OCR 结果匹配并填充到页面
+        fillDataFromOCR(items) {
+            if (!items || items.length === 0) {
+                this.$message.warning('未能识别到有效文字信息');
                 return;
             }
 
             let matchCount = 0;
-            // 遍历识别到的数据
-            extractedData.forEach(item => {
-                // 在 modelList 中查找匹配的模型 (支持名称包含匹配)
-                // item.检查项目 对应 model.name
-                // 这里假设 Python 返回的 key 为 "检查项目", "结果"
-                // 也可以让 Python 直接返回 standard 字段 name, value
+            const matchedIds = new Set(); // 防止重复添加
+
+            // 遍历所有可用模型，尝试在 OCR 结果中找到对应的值
+            // 策略：遍历 OCR 识别出的每一项，看它是否包含了某个模型的名字
+            
+            // 预处理 OCR 数据：如果是 PaddleOCR 的原始 [{text:..., box:...}] 格式，提取 text
+            const textLines = items.map(item => {
+                return typeof item === 'string' ? item : (item.text || item.name || '');
+            });
+
+            this.modelList.forEach(model => {
+                // 1. 尝试精确或模糊匹配名称
+                // 例如：OCR 结果中有 "白细胞计数 5.2"，模型名为 "白细胞"
                 
-                // 为了兼容性，假设 OCR 返回对象的字段是 flexible 的，这里尝试匹配
-                const itemName = item.name || item.检查项目 || item.item;
-                const itemValue = item.value || item.结果 || item.result;
+                // 如果 items 是结构化的对象数组 (例如 SMR-R1 返回的 {name: 'WBC', result: '5.2'})
+                const structuredItem = items.find(item => 
+                    item.name && (item.name.includes(model.name) || model.name.includes(item.name))
+                );
 
-                if (itemName && itemValue) {
-                    // 在现有模型列表中查找
-                    const targetModel = this.modelList.find(m => 
-                        m.name === itemName || itemName.includes(m.name) || m.name.includes(itemName)
-                    );
+                if (structuredItem && structuredItem.result) {
+                    this.addAndFillModel(model, structuredItem.result);
+                    matchCount++;
+                    return;
+                }
 
-                    if (targetModel) {
-                        // 检查是否已经选中，如果没有则选中
-                        let selected = this.selectedModel.find(s => s.id === targetModel.id);
-                        if (!selected) {
-                            // 深拷贝一份模型配置，避免直接修改原对象
-                            selected = JSON.parse(JSON.stringify(targetModel));
-                            this.selectedModel.push(selected);
-                        }
-                        // 填充数值
-                        selected.value = itemValue;
+                // 如果 items 是非结构化的文本列表 (PaddleOCR)
+                // 简单的启发式规则：查找包含模型名的行，并提取其中的数字
+                const line = textLines.find(text => text.includes(model.name));
+                if (line) {
+                    // 提取行内的数字 (例如 "白细胞 5.2" -> 5.2)
+                    const numMatch = line.match(/(\d+(\.\d+)?)/);
+                    if (numMatch) {
+                        this.addAndFillModel(model, numMatch[0]);
                         matchCount++;
                     }
                 }
@@ -294,20 +309,34 @@ export default {
 
             if (matchCount > 0) {
                 this.$notify({
-                    title: '识别成功',
-                    message: `已自动提取并填充 ${matchCount} 项数据，请核对后保存。`,
+                    title: '识别完成',
+                    message: `已自动匹配并填充 ${matchCount} 项数据，请核对。`,
                     type: 'success',
                     duration: 3000
                 });
             } else {
-                this.$message.warning('识别成功，但在当前模型库中未找到匹配的指标，请检查模型名称。');
+                this.$message.warning('OCR 识别成功，但未能自动匹配到任何已知的健康指标，请手动录入。');
             }
         },
 
-        // 下载模板
+        // 辅助方法：选中模型并填值
+        addAndFillModel(model, value) {
+            // 检查是否已经存在于选中列表
+            let selected = this.selectedModel.find(s => s.id === model.id);
+            if (!selected) {
+                // 深拷贝防止污染源数据
+                selected = JSON.parse(JSON.stringify(model));
+                this.selectedModel.push(selected);
+            }
+            // 填充数值
+            this.$set(selected, 'value', value);
+        },
+
+        // ================= 原有业务逻辑 =================
+
         downloadTemplate() {
             this.$axios.get('/user-health/template', {
-                responseType: 'blob' 
+                responseType: 'blob'
             }).then(response => {
                 const blobData = response.data ? response.data : response;
                 const blob = new Blob([blobData], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -338,7 +367,6 @@ export default {
             this.isOperation = false;
             this.cover = '';
         },
-        // 发送修改请求
         updateOperation() {
             this.$axios.put('/health-model-config/update', this.data).then(response => {
                 const { data } = response;
@@ -353,18 +381,15 @@ export default {
                         showConfirmButton: false,
                         timer: 1000,
                     });
-                    // 继续加载最新的模型数据
                     this.getAllModelConfig();
                 }
             })
         },
-        // 修改自己配置的模型
         updateModel(model) {
             this.data = model;
             this.dialogUserOperaion = true;
             this.isOperation = true;
         },
-        // 删除自己配置的模型
         async deleteModel(model) {
             const confirmed = await this.$swalConfirm({
                 title: '删除模型【' + model.name + "】",
@@ -374,7 +399,6 @@ export default {
             if (confirmed) {
                 const ids = [];
                 ids.push(model.id);
-                // 写删除请求
                 this.$axios.post('/health-model-config/batchDelete', ids).then(response => {
                     const { data } = response;
                     if (data.code === 200) {
@@ -385,9 +409,7 @@ export default {
                             showConfirmButton: false,
                             timer: 1000,
                         });
-                        // 继续加载最新的模型数据
                         this.getAllModelConfig();
-                        // 如果已经选中对应的模型，从列表中删除对应的项
                         this.selectedModel = this.selectedModel.filter(entity => entity.id !== model.id);
                     }
                 })
@@ -396,7 +418,6 @@ export default {
         goBack() {
             this.$router.push('/user');
         },
-        // 记录值
         toRecord() {
             const userHealths = this.selectedModel.map(entity => {
                 return {
@@ -404,6 +425,10 @@ export default {
                     value: entity.value
                 }
             });
+            if (userHealths.length === 0) {
+                this.$message.warning("请至少录入一项数据");
+                return;
+            }
             this.$axios.post('/user-health/save', userHealths).then(response => {
                 const { data } = response;
                 if (data.code === 200) {
@@ -413,7 +438,6 @@ export default {
                         message: '记录成功',
                         type: 'success'
                     });
-                    // 两秒后跳转出去
                     setTimeout(() => {
                         this.$router.push('/user');
                     }, 2000)
@@ -423,8 +447,7 @@ export default {
         modelSelected(model) {
             const saveFlag = this.selectedModel.find(entity => entity.id === model.id);
             if (!saveFlag) {
-                // 不存在则添加
-                this.selectedModel.push(model);
+                this.selectedModel.push(JSON.parse(JSON.stringify(model))); // 使用副本
             }
         },
         searModel() {
@@ -444,8 +467,10 @@ export default {
         },
         getUser() {
             const userInfo = sessionStorage.getItem('userInfo');
-            const entity = JSON.parse(userInfo);
-            this.userId = entity.id;
+            if (userInfo) {
+                const entity = JSON.parse(userInfo);
+                this.userId = entity.id;
+            }
         },
         async addOperation() {
             try {
@@ -477,7 +502,6 @@ export default {
             this.dialogUserOperaion = true;
         },
         handleClick(tab, event) {
-            // 先去清空条件
             this.userHealthModel = {};
             if (this.activeName === 'first') {
                 this.userHealthModel.isGlobal = true;
@@ -498,7 +522,9 @@ export default {
         },
         getUserInfo() {
             const userInfo = sessionStorage.getItem('userInfo');
-            this.userInfo = JSON.parse(userInfo);
+            if (userInfo) {
+                this.userInfo = JSON.parse(userInfo);
+            }
         },
     },
 };

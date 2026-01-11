@@ -38,7 +38,7 @@ public class UserHealthController {
     @Resource
     private UserHealthService userHealthService;
 
-    // 修改点：这里的地址必须和 Python 代码中的 @app.post 路径一致
+    // 确保这个地址和 Python 控制台显示的地址一致
     private static final String PYTHON_OCR_URL = "http://127.0.0.1:8000/ocr/medical_report";
 
     /**
@@ -50,7 +50,6 @@ public class UserHealthController {
         try {
             // 1. 保存文件到本地临时目录
             String originalFilename = file.getOriginalFilename();
-            // 防止文件名为空
             if (originalFilename == null) {
                 originalFilename = "temp.jpg";
             }
@@ -66,10 +65,11 @@ public class UserHealthController {
             file.transferTo(localFile);
 
             // 2. 调用 Python OCR 服务
-            // 使用 OkHttp 发送 Multipart 请求
+            // 将超时时间从 60 秒改为 600 秒 (10分钟)
             OkHttpClient client = new OkHttpClient.Builder()
-                    .connectTimeout(60, TimeUnit.SECONDS) // OCR 识别可能耗时较长
-                    .readTimeout(60, TimeUnit.SECONDS)
+                    .connectTimeout(300, TimeUnit.SECONDS) // 连接超时 5分钟
+                    .readTimeout(600, TimeUnit.SECONDS)    // 读取超时 10分钟 (对应大模型推理慢)
+                    .writeTimeout(300, TimeUnit.SECONDS)
                     .build();
 
             // 构建请求体
@@ -90,7 +90,6 @@ public class UserHealthController {
                     JSONObject jsonObject = JSON.parseObject(resultJson);
 
                     if (jsonObject.getInteger("code") == 200) {
-                        // 返回识别到的结构化数据 (List)
                         return ApiResult.success(jsonObject.get("data"));
                     } else {
                         return ApiResult.error("识别失败: " + jsonObject.getString("msg"));
@@ -101,9 +100,14 @@ public class UserHealthController {
             }
         } catch (IOException e) {
             e.printStackTrace();
-            return ApiResult.error("文件处理或服务调用异常");
+            // 捕获超时异常，给前端返回更友好的提示
+            if (e instanceof java.net.SocketTimeoutException) {
+                return ApiResult.error("服务器推理超时(>10分钟)，请稍后在记录中查看结果或重试");
+            }
+            return ApiResult.error("文件处理或服务调用异常: " + e.getMessage());
         }
     }
+
 
     /**
      * 下载健康记录导入模板

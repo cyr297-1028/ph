@@ -1,135 +1,107 @@
 import uvicorn
 from fastapi import FastAPI, File, UploadFile
-from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
-from qwen_vl_utils import process_vision_info
-import torch
-import os
+from paddleocr import PaddleOCR
 import shutil
+import os
 import json
 
 app = FastAPI()
 
 # ==========================================
-# 1. 初始化 SMR-R1 模型 (替代 PaddleOCR)
+# 1. 初始化 PaddleOCR
 # ==========================================
-MODEL_PATH = "mrlijun/SMR-R1"  # HuggingFace 模型 ID，第一次运行会自动下载
+print("⏳ 正在加载 PaddleOCR 模型...")
 
-print("⏳ 正在加载 SMR-R1 模型 (这需要较多显存)...")
-try:
-    # 加载模型 (自动适配显卡)
-    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-        MODEL_PATH,
-        torch_dtype=torch.bfloat16,
-        device_map="auto" 
-    )
-    # 加载处理器 (负责处理图片和文字)
-    processor = AutoProcessor.from_pretrained(MODEL_PATH)
-    print("✅ SMR-R1 模型加载成功！")
-except Exception as e:
-    print(f"❌ 模型加载失败 (请检查显存或CUDA配置): {e}")
-    model = None
-    processor = None
+
+ocr_engine = PaddleOCR(use_textline_orientation=True, lang="ch")
+
+print("✅ PaddleOCR 加载成功！")
 
 @app.post("/ocr/medical_report")
-async def analyze_medical_report(file: UploadFile = File(...)):
-    # 1. 保存图片到本地
+async def ocr_predict(file: UploadFile = File(...)):
+    # 1. 确保临时目录存在
     save_dir = "temp_uploads"
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
-    file_path = os.path.join(save_dir, file.filename)
+        
+    # 2. 保存文件 (使用 abspath 获取绝对路径，避免相对路径问题)
+    file_path = os.path.abspath(os.path.join(save_dir, file.filename))
     
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    print(f"✅ 图片已接收: {file_path}")
-
-    if model is None:
-        return {"code": 500, "msg": "模型未能成功启动，无法处理请求。"}
+    print(f"📥 正在接收图片: {file.filename}")
+    print(f"📂 本地保存路径: {file_path}")
 
     try:
-        # ==========================================
-        # 2. 构造 Prompt (提示词)
-        #    在这里告诉模型：你要分类，还要结构化提取
-        # ==========================================
-        prompt_text = """
-        你是一个专业的医疗文档分析助手。请分析这张图片，完成以下任务：
-        1. 【分类】：判断这张图片的类型（如：血常规检验报告、生化检验报告、尿液分析报告、处方单、其他）。
-        2. 【提取】：提取表格中的所有检测项目。
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
         
-        请严格按照以下 JSON 格式输出结果，不要包含 Markdown 格式：
-        {
-            "report_type": "报告类型",
-            "items": [
-                {"name": "项目名称", "result": "结果数值", "unit": "单位", "ref_range": "参考范围", "arrow": "异常箭头(↑/↓/无)"}
-            ],
-            "patient": {
-                "name": "姓名",
-                "sample_time": "采样时间"
+        # 3. 检查文件是否存在且有大小
+        if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+            return {"code": 400, "msg": "文件上传失败或文件为空"}
+
+        # 4. 调用 OCR (核心修改点)
+        print("🔍 开始识别...")
+        
+        # 注意：不再传 cls=True，因为初始化时已指定
+        result = ocr_engine.ocr(file_path)
+        
+        # --- 调试打印 (看看 OCR 到底吐出了什么) ---
+        print(f"🧐 OCR 原始返回数据: {result}") 
+
+        # 5. 安全解析数据 (防止报错)
+        ocr_items = []
+        
+        # 情况A: 结果为 None (常见于路径不对或完全无法读取)
+        if result is None:
+            print("⚠️ 警告: OCR 返回了 None")
+            return {"code": 200, "msg": "未检测到任何文字(Result is None)", "data": {"items": []}}
+
+        # 情况B: 结果是一个列表，但第一个元素是 None (常见于图片能读但没字)
+        if len(result) > 0 and result[0] is None:
+             print("⚠️ 警告: 图片中没有识别到文字")
+             return {"code": 200, "msg": "未检测到任何文字", "data": {"items": []}}
+
+        # 情况C: 正常解析
+        # 这里的 result[0] 才是真正的行数据列表
+        if result and len(result) > 0:
+            for line in result[0]:
+                # line 的结构通常是: [ [[x1,y1]...], ('文字', 0.99) ]
+                points = line[0] 
+                text_info = line[1] # ('文字', 0.99)
+                
+                text = text_info[0]
+                confidence = text_info[1]
+                
+                # 计算坐标框
+                xs = [p[0] for p in points]
+                ys = [p[1] for p in points]
+                
+                ocr_items.append({
+                    "text": text,
+                    "box": {
+                        "x": int(min(xs)),
+                        "y": int(min(ys)),
+                        "w": int(max(xs) - min(xs)),
+                        "h": int(max(ys) - min(ys))
+                    },
+                    "score": float(confidence)
+                })
+
+        print(f"✅ 识别成功，共找到 {len(ocr_items)} 处文字")
+        return {
+            "code": 200, 
+            "msg": "识别成功",
+            "data": {
+                "items": ocr_items,
+                "image_path": file_path 
             }
         }
-        """
-
-        # ==========================================
-        # 3. 调用模型进行推理 (端到端)
-        # ==========================================
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image", "image": file_path},
-                    {"type": "text", "text": prompt_text},
-                ],
-            }
-        ]
-
-        # 预处理输入
-        text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        image_inputs, video_inputs = process_vision_info(messages)
-        inputs = processor(
-            text=[text],
-            images=image_inputs,
-            padding=True,
-            return_tensors="pt",
-        )
-        inputs = inputs.to("cuda") # 发送到显卡
-
-        # 生成结果
-        print("⏳ SMR-R1 正在思考和提取...")
-        generated_ids = model.generate(**inputs, max_new_tokens=2048) # 允许生成的最大长度
-        generated_ids_trimmed = [
-            out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-        ]
-        output_text = processor.batch_decode(
-            generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
-        )[0]
-
-        print(f"🧠 模型原始输出: {output_text[:100]}...")
-
-        # ==========================================
-        # 4. 解析结果 (将模型的文本转回 JSON)
-        # ==========================================
-        try:
-            # 有时候模型会输出 ```json ... ```，需要清洗一下
-            clean_json_str = output_text.replace("```json", "").replace("```", "").strip()
-            result_json = json.loads(clean_json_str)
-            
-            # 适配你前端需要的格式
-            final_data = {
-                "entities": result_json.get("patient", {}),  # 对应你原来的 entities
-                "tables": [], # SMR-R1 直接提取了结构化 items，可能不需要原来的 html 表格了，或者你可以自己拼一个 html
-                "structured_items": result_json.get("items", []), # 新增：结构化的项目列表
-                "doc_type": result_json.get("report_type", "未知") # 新增：自动分类结果
-            }
-            
-            return {"code": 200, "data": final_data}
-
-        except json.JSONDecodeError:
-            print("⚠️ 模型输出的不是标准 JSON，返回原始文本")
-            return {"code": 200, "data": {"raw_text": output_text}}
 
     except Exception as e:
+        # 打印详细错误堆栈，方便排查
         import traceback
         traceback.print_exc()
-        return {"code": 500, "msg": f"AI 推理失败: {str(e)}"}
+        print(f"❌ OCR 处理过程中发生错误: {str(e)}")
+        return {"code": 500, "msg": f"服务端内部错误: {str(e)}"}
 
 if __name__ == '__main__':
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=60061) 
