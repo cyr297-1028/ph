@@ -332,16 +332,33 @@ export default {
             this.analyzing = true;
             this.analysisResult = ''; 
             try {
-                const response = await this.$axios.get('/kimi/analyze');
+                // 添加 { timeout: 300000 } 参数，设置超时为 5 分钟
+                // 确保 AI 有足够的时间思考和生成长报告
+                const response = await this.$axios.get('/kimi/analyze', {
+                    timeout: 300000 
+                });
+                console.log("后端返回的完整数据：", response.data);
+
                 const { data } = response;
                 if (data.code === 200) {
-                    this.analysisResult = data.data;
+                    // 【检查】这里 data.data 到底有没有值？
+                    if (!data.data) {
+                        console.error("出问题了：code是200，但 data 字段是空的！");
+                        this.$message.warning("分析成功，但没有收到内容，请检查后端返回值");
+                    } else {
+                        this.analysisResult = data.data;
+                        this.$message.success("分析报告生成成功！");
+                    }
                 } else {
                     this.$message.error(data.msg || '分析失败');
                 }
             } catch (error) {
                 console.error('智能分析请求失败:', error);
-                this.$message.error('智能分析服务暂时不可用');
+                if (error.code === 'ECONNABORTED') {
+                    this.$message.error('分析时间较长，请求超时，请检查网络或稍后重试');
+                } else {
+                    this.$message.error('智能分析服务暂时不可用');
+                }
             } finally {
                 this.analyzing = false;
             }
