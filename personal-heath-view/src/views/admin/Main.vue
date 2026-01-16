@@ -1,42 +1,51 @@
 <template>
     <div class="container-main">
-        <el-row>
-            <el-col :span="6">
-                <div style="padding: 10px 5px;box-sizing: border-box;">
-                    <h2 style="margin-top: 0;">最新消息</h2>
-                    <div class="timeline-container">
-                        <div v-for="(message, index) in messageList" :key="message" class="timeline-item">
-                            <div class="receiver-name">{{ message.receiverName }}</div>
-                            <div class="message-content">{{ parseText(message.content) }}</div>
-                            <div class="create-time">{{ message.createTime }}</div>
+        <el-row :gutter="20">
+            <el-col :span="14">
+                <div class="dashboard-card">
+                    <div style="margin-bottom: 20px;">
+                        <PieChart fontColor="rgb(51,51,51)" tag="信息占比" :values="pieValues" :types="pieTypes" />
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <div style="width: 49%; overflow: hidden;"> <LineChart height="250px" tag="存量用户" @on-selected="userDatesSelected" :values="userValues"
+                                :date="userDates" />
+                        </div>
+                        <div style="width: 49%; overflow: hidden;"> <LineChart height="250px" tag="健康指标" @on-selected="modelDatesSelected" :values="modelValues"
+                                :date="modelDates" />
                         </div>
                     </div>
                 </div>
             </el-col>
-            <el-col :span="18">
-                <div style="box-sizing: border-box;">
-                    <PieChart fontColor="rgb(51,51,51)" tag="信息占比" :values="pieValues" :types="pieTypes" />
-                </div>
-                <div style="display: flex;justify-content: space-evenly;">
-                    <div style="box-sizing: border-box;">
-                        <LineChart height="220px" tag="存量用户" @on-selected="userDatesSelected" :values="userValues"
-                            :date="userDates" />
-                    </div>
-                    <div style="box-sizing: border-box;">
-                        <LineChart height="220px" tag="健康指标" @on-selected="modelDatesSelected" :values="modelValues"
-                            :date="modelDates" />
-                    </div>
 
+            <el-col :span="8">
+                <div class="dashboard-card message-card">
+                    <div class="card-header">
+                        <span class="header-title">最新消息</span>
+                        <el-tag size="mini" type="primary" effect="plain">{{ messageList.length }}</el-tag>
+                    </div>
+                    <div class="timeline-container">
+                        <div v-for="(message, index) in messageList" :key="index" class="timeline-item">
+                            <div class="message-header">
+                                <span class="receiver-name">{{ message.receiverName }}</span>
+                                <span class="create-time">{{ time(message.createTime) }}</span>
+                            </div>
+                            <div class="message-content" :title="message.content">
+                                {{ parseText(message.content) }}
+                            </div>
+                        </div>
+                        <el-empty v-if="messageList.length === 0" description="暂无消息" :image-size="80"></el-empty>
+                    </div>
                 </div>
-
             </el-col>
         </el-row>
     </div>
 </template>
+
 <script>
 import LineChart from "@/components/LineChart"
 import PieChart from "@/components/PieChart"
 import { timeAgo } from "@/utils/data"
+
 export default {
     components: { LineChart, PieChart },
     data() {
@@ -51,35 +60,25 @@ export default {
         }
     },
     created() {
-        // 数据较少，默认查365天
         this.userDatesSelected(365);
-        // 数据较少，默认查365天
         this.modelDatesSelected(365);
         this.loadPieCharts();
         this.loadMessages();
     },
     methods: {
         parseText(text) {
-            // 使用正则表达式判断文本是否符合由分号分隔且至少有三项的结构
             const pattern = /^([^;]+;){2}[^;]+$/;
             if (pattern.test(text)) {
-                // 使用分号分割文本
                 const parts = text.split(';');
-                // 返回第三项内容
                 return parts[2];
             }
-            // 若不满足条件则返回原文本
             return text;
         },
         time(createTime) {
             return timeAgo(createTime);
         },
-        // 加载资讯
         loadMessages() {
-            const messageQueryDto = {
-                current: 1,
-                size: 4
-            }
+            const messageQueryDto = { current: 1, size: 6 }
             this.$axios.post(`/message/query`, messageQueryDto).then(response => {
                 const { data } = response;
                 if (data.code === 200) {
@@ -117,102 +116,113 @@ export default {
     },
 };
 </script>
+
 <style scoped lang="scss">
 .container-main {
-    overflow-y: hidden;
-    overflow-x: hidden;
-    padding: 10px;
+    /* 核心修改：限制宽度，防止挤压左侧菜单 */
+    width: 98%; 
+    margin: 10px auto; 
+    padding-bottom: 20px;
+}
+
+.dashboard-card {
+    background-color: #FFFFFF;
+    border-radius: 8px; /* 圆角稍微加大一点 */
+    padding: 20px;
+    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
+    min-height: 580px;
+    height: 100%;
+    box-sizing: border-box;
+    /* 增加过渡效果，窗口变化时更平滑 */
+    transition: all 0.3s;
+}
+
+.message-card {
+    display: flex;
+    flex-direction: column;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f0f0f0;
+
+    .header-title {
+        font-size: 16px;
+        font-weight: bold;
+        color: #303133;
+        border-left: 4px solid #4a8bfc;
+        padding-left: 10px;
+    }
 }
 
 .timeline-container {
-    padding: 10px 5px;
-    box-sizing: border-box;
-    position: relative;
-    margin-left: 20px;
-}
-
-/* 时间轴线 */
-.timeline-container::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: 2px;
-    background: #e0e0e0;
-    margin-left: -10px;
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 5px;
+    
+    &::-webkit-scrollbar {
+        width: 4px;
+    }
+    &::-webkit-scrollbar-thumb {
+        background: #e0e0e0;
+        border-radius: 2px;
+    }
 }
 
 .timeline-item {
     position: relative;
-    padding-bottom: 20px;
+    padding-left: 20px;
+    padding-bottom: 25px;
+    border-left: 2px solid #f0f0f0;
+    margin-left: 5px;
+
+    &:last-child {
+        border-left: 2px solid transparent;
+    }
+
+    &::before {
+        content: '';
+        position: absolute;
+        left: -6px;
+        top: 0;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #4a8bfc;
+        border: 2px solid #fff;
+        box-shadow: 0 0 0 1px #4a8bfc;
+    }
 }
 
-/* 时间节点圆点 */
-.timeline-item::before {
-    content: '';
-    position: absolute;
-    top: 5px;
-    left: -18px;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: #4a8bfc;
-    border: 2px solid white;
-    box-shadow: 0 0 0 2px #4a8bfc;
-}
+.message-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
 
-.receiver-name {
-    font-size: 16px;
-    font-weight: 800;
-    margin-left: 10px;
+    .receiver-name {
+        font-size: 14px;
+        font-weight: 600;
+        color: #333;
+    }
+
+    .create-time {
+        font-size: 12px;
+        color: #999;
+    }
 }
 
 .message-content {
-    padding: 8px 0;
-    font-size: 14px;
-    color: #6f6d6d;
-    margin-left: 10px;
-    background: #f9f9f9;
+    font-size: 13px;
+    color: #666;
+    background-color: #f8fcfb;
     padding: 10px;
-    margin-top: 10px;
     border-radius: 4px;
-    // border-left: 3px solid #4a8bfc;
-}
-
-.create-time {
-    padding: 5px 0;
-    font-size: 12px;
-    color: #999;
-    margin-left: 10px;
-    font-style: italic;
-}
-
-.new-item {
-    display: flex;
-    justify-content: flex-start;
-
-    .item {
-        padding: 5px;
-        box-sizing: border-box;
-
-        img {
-            width: 168px;
-            height: 104px;
-            border-radius: 5px;
-        }
-
-    }
-
-    .item-buttom {
-        padding: 5px;
-        box-sizing: border-box;
-
-        .title {
-            font-size: 16px;
-            font-weight: 800;
-        }
-
-    }
+    line-height: 1.5;
+    word-break: break-all;
 }
 </style>

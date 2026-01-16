@@ -37,16 +37,14 @@
                 </div>
             </div>
         </div>
+        
         <div>
             <h2 style="padding-left: 20px;border-left: 2px solid rgb(43, 121, 203);">健康指标数据</h2>
             <el-row style="padding: 10px;margin-left: 10px;">
                 <el-row style="display: flex;justify-content: left;align-items: center;gap: 10px;">
                     <el-select size="small" @change="fetchFreshData" v-model="healthModelConfigId" placeholder="请选择模型项">
-                        <el-option :key="null" label="全部" :value="null">
-                        </el-option>
-                        <el-option v-for="model in usersHealthModelConfig" :key="model.id" :label="model.name"
-                            :value="model.id">
-                        </el-option>
+                        <el-option :key="null" label="全部" :value="null"></el-option>
+                        <el-option v-for="model in usersHealthModelConfig" :key="model.id" :label="model.name" :value="model.id"></el-option>
                     </el-select>
                     <el-date-picker size="small" @change="timeChange" style="width: 220px;" v-model="searchTime"
                         type="daterange" range-separator="至" start-placeholder="记录开始" end-placeholder="记录结束">
@@ -57,8 +55,7 @@
                 <el-table row-key="id" @selection-change="handleSelectionChange" :data="tableData">
                     <el-table-column prop="name" label="指标项">
                         <template slot-scope="scope">
-                            <span><i class="el-icon-paperclip" style="margin-right: 3px;"></i>{{ scope.row.name
-                                }}</span>
+                            <span><i class="el-icon-paperclip" style="margin-right: 3px;"></i>{{ scope.row.name }}</span>
                         </template>
                     </el-table-column>
                     <el-table-column prop="value" width="148" label="数值" sortable>
@@ -93,11 +90,17 @@
         </div>
 
         <el-dialog title="AI 个人健康档案与趋势分析" :visible.sync="showAnalysisDialog" width="60%" :close-on-click-modal="false">
-            <div v-loading="analyzing" element-loading-text="Kimi 正在分析您的健康数据，请稍候...">
-                <div v-if="analysisResult" class="markdown-body" v-html="renderedAnalysis" style="line-height: 1.8; padding: 10px;"></div>
+            <div v-loading="analyzing" element-loading-text="Kimi 正在深度思考您的健康数据，请耐心等待 1-2 分钟...">
+                <div v-if="analysisResult" 
+                     class="markdown-body" 
+                     v-html="renderedAnalysis" 
+                     style="line-height: 1.8; padding: 10px; max-height: 60vh; overflow-y: auto;">
+                </div>
+                
                 <div v-else-if="!analyzing" style="text-align: center; padding: 40px; color: #909399;">
                     <i class="el-icon-s-data" style="font-size: 48px; margin-bottom: 20px;"></i>
                     <p>点击下方按钮，生成您的专属健康报告</p>
+                    <p style="font-size: 12px; color: #ccc;">报告生成后将自动保存至“我的消息”</p>
                 </div>
             </div>
             <span slot="footer" class="dialog-footer">
@@ -154,45 +157,17 @@ export default {
             this.selectedRows = [row];
             this.batchDelete();
         },
-        /**
-         * 状态检查逻辑：
-         * 返回 true 表示正常，返回 false 表示异常。
-         * 逻辑：只要无法判断（无阈值、非数值），一律视为正常，避免误报。
-         */
         statusCheck(data) {
             let { value, valueRange } = data;
-
-            // 1. 无阈值，或阈值字符串为空/null -> 正常
-            if (!valueRange || String(valueRange).trim() === '' || valueRange === 'null') {
-                return true; 
-            }
-
-            // 2. 无输入值 -> 正常
-            if (value === null || value === undefined || String(value).trim() === '') {
-                return true;
-            }
-
-            // 3. 处理中文逗号兼容性
+            if (!valueRange || String(valueRange).trim() === '' || valueRange === 'null') return true; 
+            if (value === null || value === undefined || String(value).trim() === '') return true;
             valueRange = valueRange.replace('，', ',');
-            
-            // 如果没有逗号分隔符，视为无效阈值 -> 正常
-            if (valueRange.indexOf(',') === -1) {
-                return true;
-            }
-
+            if (valueRange.indexOf(',') === -1) return true;
             const parts = valueRange.split(',');
-            // 使用 parseFloat 解析，如果是文本会变成 NaN
             const min = parseFloat(parts[0]);
             const max = parseFloat(parts[1]);
             const val = parseFloat(value);
-
-            // 4. 关键：非数值检查
-            // 如果输入的是文字（如"良好"），或者阈值不是数字 -> 正常
-            if (isNaN(val) || isNaN(min) || isNaN(max)) {
-                return true;
-            }
-
-            // 5. 只有当三者都是有效数字时，才进行范围判定 (包含边界值)
+            if (isNaN(val) || isNaN(min) || isNaN(max)) return true;
             return val >= min && val <= max;
         },
         async batchDelete() {
@@ -218,23 +193,11 @@ export default {
                             timer: 2000,
                         });
                         this.fetchFreshData();
-                        return;
                     }
                 } catch (e) {
-                    this.$swal.fire({
-                        title: '错误提示',
-                        text: e,
-                        icon: 'error',
-                        showConfirmButton: false,
-                        timer: 2000,
-                    });
                     console.error(`用户健康记录信息删除异常：`, e);
                 }
             }
-        },
-        handleFilter() {
-            this.currentPage = 1;
-            this.fetchFreshData();
         },
         async fetchFreshData() {
             try {
@@ -263,17 +226,8 @@ export default {
                 console.error('查询用户健康记录信息异常:', error);
             }
         },
-        handleFilterClear() {
-            this.filterText = '';
-            this.handleFilter();
-        },
         handleSelectionChange(selection) {
             this.selectedRows = selection;
-        },
-        resetQueryCondition() {
-            this.searchTime = [];
-            this.healthModelConfigId = null;
-            this.fetchFreshData();
         },
         handleSizeChange(val) {
             this.pageSize = val;
@@ -297,9 +251,6 @@ export default {
         modelChange(day) {
             this.onSelectedTime(day);
             this.loadUserModelHavaRecord();
-        },
-        modelUserChange() {
-            this.fetchFreshData();
         },
         loadHealthModelConfig() {
             this.$axios.post("/health-model-config/modelList").then(response => {
@@ -330,34 +281,40 @@ export default {
         },
         async startAnalysis() {
             this.analyzing = true;
-            this.analysisResult = ''; 
+            this.$message.info('正在请求 AI 分析，生成报告可能需要 1-2 分钟，请耐心等待...');
+            
             try {
-                // 添加 { timeout: 300000 } 参数，设置超时为 5 分钟
-                // 确保 AI 有足够的时间思考和生成长报告
+                // 【核心修改】responseType 设置为 'blob'，表示二进制流（文件）
                 const response = await this.$axios.get('/kimi/analyze', {
-                    timeout: 300000 
+                    responseType: 'blob', 
+                    timeout: 300000 // 5分钟超时
                 });
-                console.log("后端返回的完整数据：", response.data);
 
-                const { data } = response;
-                if (data.code === 200) {
-                    // 【检查】这里 data.data 到底有没有值？
-                    if (!data.data) {
-                        console.error("出问题了：code是200，但 data 字段是空的！");
-                        this.$message.warning("分析成功，但没有收到内容，请检查后端返回值");
-                    } else {
-                        this.analysisResult = data.data;
-                        this.$message.success("分析报告生成成功！");
-                    }
-                } else {
-                    this.$message.error(data.msg || '分析失败');
-                }
+                // 创建下载链接
+                const blob = new Blob([response.data], { type: 'text/plain;charset=utf-8' });
+                const downloadUrl = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                // 设置下载文件名
+                link.setAttribute('download', `健康分析报告_${new Date().getTime()}.txt`);
+                document.body.appendChild(link);
+                link.click();
+                
+                // 清理
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(downloadUrl);
+
+                this.$message.success('分析成功！报告已下载到您的电脑。');
+                
+                // 关闭弹窗（因为不再在弹窗里显示了）
+                this.showAnalysisDialog = false;
+
             } catch (error) {
-                console.error('智能分析请求失败:', error);
+                console.error('分析请求失败:', error);
                 if (error.code === 'ECONNABORTED') {
-                    this.$message.error('分析时间较长，请求超时，请检查网络或稍后重试');
+                    this.$message.error('AI 思考时间过长，网络请求超时，请检查网络');
                 } else {
-                    this.$message.error('智能分析服务暂时不可用');
+                    this.$message.error('下载报告失败，请稍后重试');
                 }
             } finally {
                 this.analyzing = false;
@@ -375,23 +332,6 @@ export default {
     li { list-style-type: disc; }
     strong { color: #333; font-weight: 700; }
 }
-
-.status-success {
-    display: inline-block;
-    padding: 1px 5px;
-    border-radius: 2px;
-    background-color: rgb(201, 237, 249);
-    color: rgb(111, 106, 196);
-    font-size: 12px;
-}
-
-.status-error {
-    display: inline-block;
-    padding: 1px 5px;
-    border-radius: 2px;
-    background-color: rgb(233, 226, 134);
-    color: rgb(131, 138, 142);
-    color: rgb(111, 106, 196);
-    font-size: 12px;
-}
+.status-success { display: inline-block; padding: 1px 5px; border-radius: 2px; background-color: rgb(201, 237, 249); color: rgb(111, 106, 196); font-size: 12px; }
+.status-error { display: inline-block; padding: 1px 5px; border-radius: 2px; background-color: rgb(233, 226, 134); color: rgb(131, 138, 142); color: rgb(111, 106, 196); font-size: 12px; }
 </style>

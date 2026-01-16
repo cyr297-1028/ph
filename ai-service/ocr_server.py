@@ -1,9 +1,19 @@
 import uvicorn
 from fastapi import FastAPI, File, UploadFile
-from paddleocr import PaddleOCR
 import shutil
 import os
-import json
+import sys
+import logging
+
+# 尝试导入 PaddleOCR
+try:
+    from paddleocr import PaddleOCR
+except ImportError:
+    print("❌ 错误: 未找到 paddleocr 模块。请先运行: pip install paddleocr paddlepaddle")
+    sys.exit(1)
+
+# 抑制调试日志
+logging.getLogger("ppocr").setLevel(logging.WARNING)
 
 app = FastAPI()
 
@@ -12,96 +22,169 @@ app = FastAPI()
 # ==========================================
 print("⏳ 正在加载 PaddleOCR 模型...")
 
+try:
+    # 【核心调整】简化初始化参数，使用默认值以确保最稳定的兼容性
+    # 移除复杂的阈值参数，防止参数名版本冲突导致 pipeline 异常
+    ocr_engine = PaddleOCR(
+        lang="ch",           # 中文模式
+        use_angle_cls=True   # 开启方向检测 (大多数版本兼容此参数)
+    )
+    print("✅ PaddleOCR 加载成功！")
+except Exception as e:
+    print(f"⚠️ 默认参数加载失败: {e}，尝试使用备用参数...")
+    try:
+        # 备用：针对新版 PaddleOCR 的参数
+        ocr_engine = PaddleOCR(
+            lang="ch", 
+            use_textline_orientation=True
+        )
+        print("✅ PaddleOCR (新版参数) 加载成功！")
+    except Exception as e2:
+        print(f"❌ PaddleOCR 加载彻底失败: {e2}")
+        sys.exit(1)
 
-ocr_engine = PaddleOCR(use_textline_orientation=True, lang="ch")
+def parse_ocr_result_to_lines(ocr_result):
+    """
+    核心逻辑：将 OCR 返回的散乱方块，根据 Y 坐标合并成人类可读的“行”
+    """
+    if ocr_result is None or len(ocr_result) == 0 or ocr_result[0] is None:
+        return []
 
-print("✅ PaddleOCR 加载成功！")
+    boxes = []
+    raw_texts = [] # 备用：如果获取不到坐标，就只存文本
+
+    for line in ocr_result[0]:
+        # line 结构可能异常，必须防御性检查
+        # 预期: [ [[x,y]...], ('text', 0.9) ]
+        
+        points = line[0]
+        text_info = line[1]
+        
+        text = ""
+        score = 0.0
+        
+        # 解析文本和分数
+        if isinstance(text_info, (list, tuple)):
+            text = text_info[0]
+            score = text_info[1] if len(text_info) > 1 else 1.0
+        elif isinstance(text_info, str):
+            text = text_info
+            score = 1.0
+            
+        # ⚠️ 【核心修复】检查 points 是否真的是坐标列表
+        if not isinstance(points, list):
+            # 如果 points 不是列表（比如是字符串），说明没有坐标信息
+            # 这种情况无法进行行合并，只能存入原始列表
+            if score > 0.5:
+                raw_texts.append(text)
+            continue 
+
+        # 只要置信度大于 0.3 就保留
+        if score > 0.3:
+            try:
+                # 尝试解析坐标
+                xs = [p[0] for p in points]
+                ys = [p[1] for p in points]
+                avg_y = sum(ys) / len(ys)
+                min_x = min(xs)
+                
+                boxes.append({
+                    "text": text,
+                    "y": avg_y,
+                    "x": min_x,
+                    "h": max(ys) - min(ys)
+                })
+            except Exception:
+                # 如果坐标解析失败，降级处理
+                raw_texts.append(text)
+
+    # 如果没有成功提取到任何带坐标的框，但有纯文本
+    if not boxes and raw_texts:
+        print("⚠️ 警告: 未检测到坐标信息，返回原始文本顺序")
+        return raw_texts
+
+    # 2. 按 Y 坐标排序
+    boxes.sort(key=lambda b: b['y'])
+
+    # 3. 智能合并同行的文字
+    lines = []
+    current_line = []
+    
+    for i, box in enumerate(boxes):
+        if i == 0:
+            current_line.append(box)
+            continue
+        
+        last_box = current_line[-1]
+        
+        # 判断是否在同一行
+        y_diff = abs(box['y'] - last_box['y'])
+        height_threshold = max(box['h'], last_box['h']) * 0.6 
+        
+        if y_diff < height_threshold:
+            current_line.append(box)
+        else:
+            current_line.sort(key=lambda b: b['x'])
+            lines.append(current_line)
+            current_line = [box]
+    
+    if current_line:
+        current_line.sort(key=lambda b: b['x'])
+        lines.append(current_line)
+
+    # 4. 拼接文字
+    final_lines = []
+    for line_boxes in lines:
+        line_text = " ".join([b['text'] for b in line_boxes])
+        final_lines.append(line_text)
+        
+    return final_lines
 
 @app.post("/ocr/medical_report")
 async def ocr_predict(file: UploadFile = File(...)):
-    # 1. 确保临时目录存在
-    save_dir = "temp_uploads"
+    save_dir = "../temp_uploads"
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
         
-    # 2. 保存文件 (使用 abspath 获取绝对路径，避免相对路径问题)
     file_path = os.path.abspath(os.path.join(save_dir, file.filename))
-    
     print(f"📥 正在接收图片: {file.filename}")
-    print(f"📂 本地保存路径: {file_path}")
-
+    
     try:
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        # 3. 检查文件是否存在且有大小
-        if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
-            return {"code": 400, "msg": "文件上传失败或文件为空"}
-
-        # 4. 调用 OCR (核心修改点)
+        print(f"📂 图片已保存: {file_path}")
         print("🔍 开始识别...")
         
-        # 注意：不再传 cls=True，因为初始化时已指定
-        result = ocr_engine.ocr(file_path)
+        # 【核心调用】强制 det=True (检测+识别)，确保返回坐标
+        # cls=True (方向矫正)
+        result = ocr_engine.ocr(file_path, det=True, cls=True)
         
-        # --- 调试打印 (看看 OCR 到底吐出了什么) ---
-        print(f"🧐 OCR 原始返回数据: {result}") 
-
-        # 5. 安全解析数据 (防止报错)
-        ocr_items = []
+        # 解析逻辑
+        lines = parse_ocr_result_to_lines(result)
         
-        # 情况A: 结果为 None (常见于路径不对或完全无法读取)
-        if result is None:
-            print("⚠️ 警告: OCR 返回了 None")
-            return {"code": 200, "msg": "未检测到任何文字(Result is None)", "data": {"items": []}}
+        # 拼接成最终文本
+        final_text = "\n".join(lines)
+        
+        print(f"✅ 识别成功，提取到 {len(lines)} 行数据")
+        
+        try:
+            os.remove(file_path)
+        except:
+            pass
 
-        # 情况B: 结果是一个列表，但第一个元素是 None (常见于图片能读但没字)
-        if len(result) > 0 and result[0] is None:
-             print("⚠️ 警告: 图片中没有识别到文字")
-             return {"code": 200, "msg": "未检测到任何文字", "data": {"items": []}}
-
-        # 情况C: 正常解析
-        # 这里的 result[0] 才是真正的行数据列表
-        if result and len(result) > 0:
-            for line in result[0]:
-                # line 的结构通常是: [ [[x1,y1]...], ('文字', 0.99) ]
-                points = line[0] 
-                text_info = line[1] # ('文字', 0.99)
-                
-                text = text_info[0]
-                confidence = text_info[1]
-                
-                # 计算坐标框
-                xs = [p[0] for p in points]
-                ys = [p[1] for p in points]
-                
-                ocr_items.append({
-                    "text": text,
-                    "box": {
-                        "x": int(min(xs)),
-                        "y": int(min(ys)),
-                        "w": int(max(xs) - min(xs)),
-                        "h": int(max(ys) - min(ys))
-                    },
-                    "score": float(confidence)
-                })
-
-        print(f"✅ 识别成功，共找到 {len(ocr_items)} 处文字")
         return {
             "code": 200, 
             "msg": "识别成功",
-            "data": {
-                "items": ocr_items,
-                "image_path": file_path 
-            }
+            "data": final_text 
         }
 
     except Exception as e:
-        # 打印详细错误堆栈，方便排查
         import traceback
         traceback.print_exc()
-        print(f"❌ OCR 处理过程中发生错误: {str(e)}")
-        return {"code": 500, "msg": f"服务端内部错误: {str(e)}"}
+        print(f"❌ 处理异常: {str(e)}")
+        # 发生错误时，返回空字符串而不是 500，防止前端报错卡死
+        return {"code": 200, "msg": f"识别异常: {str(e)}", "data": ""}
 
 if __name__ == '__main__':
-    uvicorn.run(app, host="0.0.0.0", port=60061) 
+    uvicorn.run(app, host="0.0.0.0", port=60061)

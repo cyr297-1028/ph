@@ -1,8 +1,7 @@
 package cn.kmbeast.pojo.api;
 
 /**
- * 响应基类 (修复版)
- *
+ * 响应基类 (修复版：已强制添加 data 字段)
  * @param <T>
  */
 public class Result<T> {
@@ -16,7 +15,7 @@ public class Result<T> {
     private String msg;
 
     /**
-     * 否则数据无法传给前端
+     * 【核心修复】必须在这里定义 data，否则前端收不到数据！
      */
     private T data;
 
@@ -34,8 +33,6 @@ public class Result<T> {
         this.data = data;
     }
 
-    // --- Getter 和 Setter (必须有，否则无法转JSON) ---
-
     public Integer getCode() {
         return code;
     }
@@ -52,6 +49,7 @@ public class Result<T> {
         this.msg = msg;
     }
 
+    // ↓↓↓↓↓ 这两个方法是 Jackson 序列化拿到数据的关键 ↓↓↓↓↓
     public T getData() {
         return data;
     }
@@ -59,6 +57,7 @@ public class Result<T> {
     public void setData(T data) {
         this.data = data;
     }
+    // ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
 
     @Override
     public String toString() {

@@ -1,26 +1,34 @@
 package cn.kmbeast.pojo.api;
 
+import lombok.Getter;
+import lombok.Setter;
+
 /**
  * 通用响应 (修复版)
- *
  * @param <T> 泛型
  */
+@Setter
+@Getter
 public class ApiResult<T> extends Result<T> {
 
     /**
-     * 数据总页，分页使用 (data字段已在父类定义，此处只需定义特有的)
+     * 数据总页，分页使用 (注意：这里已删除重复定义的 data 字段)
      */
     private Integer total;
+
+    public ApiResult(Integer code) {
+        super(code, "操作成功");
+    }
 
     public ApiResult(Integer code, String msg) {
         super(code, msg);
     }
 
     public ApiResult(Integer code, String msg, T data) {
+        // 调用父类构造方法，把数据存到父类的 data 字段里
         super(code, msg, data);
     }
 
-    // 带分页信息的构造
     public ApiResult(Integer code, String msg, T data, Integer total) {
         super(code, msg, data);
         this.total = total;
@@ -48,13 +56,5 @@ public class ApiResult<T> extends Result<T> {
 
     public static <T> Result<T> error(String msg) {
         return new ApiResult<>(ResultCode.REQUEST_ERROR.getCode(), msg, null);
-    }
-
-    public Integer getTotal() {
-        return total;
-    }
-
-    public void setTotal(Integer total) {
-        this.total = total;
     }
 }

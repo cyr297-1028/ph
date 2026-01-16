@@ -125,13 +125,33 @@ export default {
             this.$emit('eventListener', 'loginOut');
         },
         async loadMsgCount() {
-            const userInfo = sessionStorage.getItem('userInfo');
-            const userInfoEntity = JSON.parse(userInfo);
-            const messageQueryDto = { userId: userInfoEntity.id, isRead: false }
-            const response = await this.$axios.post(`/message/query`, messageQueryDto);
-            const { data } = response;
-            if (data.code === 200) {
-                this.noReadMsg = data.data.length;
+            // 1. 获取用户信息字符串
+            const userInfoStr = sessionStorage.getItem('userInfo');
+            
+            // 如果没登录（也就是拿不到 userInfo），直接结束，不要往下执行
+            if (!userInfoStr) {
+                return;
+            }
+
+            try {
+                // 2. 解析 JSON
+                const userInfoEntity = JSON.parse(userInfoStr);
+                
+                // 再次检查解析后的对象是否有 id
+                if (!userInfoEntity || !userInfoEntity.id) {
+                    return;
+                }
+
+                // 3. 一切正常才发起请求
+                const messageQueryDto = { userId: userInfoEntity.id, isRead: false }
+                const response = await this.$axios.post(`/message/query`, messageQueryDto);
+                const { data } = response;
+                if (data.code === 200) {
+                    this.noReadMsg = data.data.length;
+                }
+            } catch (error) {
+                // 捕获可能出现的解析错误或网络错误，防止页面崩溃
+                console.warn("加载消息通知失败或用户未登录:", error);
             }
         },
         // 不是存量路由，则跳转
