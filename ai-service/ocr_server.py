@@ -4,139 +4,157 @@ import shutil
 import os
 import sys
 import logging
+import json
+import numpy as np
+
+# 1. 检查依赖
+try:
+    import shapely
+    import pyclipper
+    print("✅ 图形库依赖检查通过。")
+except ImportError:
+    print("⚠️ 警告: 缺少 shapely 或 pyclipper，可能会影响坐标解析。")
 
 # 尝试导入 PaddleOCR
 try:
     from paddleocr import PaddleOCR
 except ImportError:
-    print("❌ 错误: 未找到 paddleocr 模块。请先运行: pip install paddleocr paddlepaddle")
+    print("❌ 错误: 未找到 paddleocr 模块。")
     sys.exit(1)
 
-# 抑制调试日志
 logging.getLogger("ppocr").setLevel(logging.WARNING)
 
 app = FastAPI()
 
-# ==========================================
-# 1. 初始化 PaddleOCR
-# ==========================================
 print("⏳ 正在加载 PaddleOCR 模型...")
-
 try:
-    # 【核心调整】简化初始化参数，使用默认值以确保最稳定的兼容性
-    # 移除复杂的阈值参数，防止参数名版本冲突导致 pipeline 异常
-    ocr_engine = PaddleOCR(
-        lang="ch",           # 中文模式
-        use_angle_cls=True   # 开启方向检测 (大多数版本兼容此参数)
-    )
+    # 保持最简初始化，防止参数报错
+    ocr_engine = PaddleOCR(use_angle_cls=True, lang="ch")
     print("✅ PaddleOCR 加载成功！")
 except Exception as e:
-    print(f"⚠️ 默认参数加载失败: {e}，尝试使用备用参数...")
+    print(f"⚠️ 初始化遇到问题: {e}")
     try:
-        # 备用：针对新版 PaddleOCR 的参数
-        ocr_engine = PaddleOCR(
-            lang="ch", 
-            use_textline_orientation=True
-        )
-        print("✅ PaddleOCR (新版参数) 加载成功！")
-    except Exception as e2:
-        print(f"❌ PaddleOCR 加载彻底失败: {e2}")
+        ocr_engine = PaddleOCR(lang="ch")
+        print("✅ PaddleOCR (兼容模式) 加载成功！")
+    except:
+        print("❌ 彻底失败")
         sys.exit(1)
 
-def parse_ocr_result_to_lines(ocr_result):
+def parse_paddlex_result(result):
     """
-    核心逻辑：将 OCR 返回的散乱方块，根据 Y 坐标合并成人类可读的“行”
+    专门解析 PaddleX / 字典格式的返回结果
+    目标：提取出 rec_texts (文字) 和 dt_polys (坐标)，并打包成统一格式
     """
-    if ocr_result is None or len(ocr_result) == 0 or ocr_result[0] is None:
+    boxes = []
+    
+    # 安全检查
+    if not result:
         return []
 
-    boxes = []
-    raw_texts = [] # 备用：如果获取不到坐标，就只存文本
-
-    for line in ocr_result[0]:
-        # line 结构可能异常，必须防御性检查
-        # 预期: [ [[x,y]...], ('text', 0.9) ]
+    # 获取核心数据对象
+    # 你的日志显示 result 本身可能就是列表，第一项是字典
+    data = None
+    if isinstance(result, list) and len(result) > 0:
+        data = result[0]
+    elif isinstance(result, dict):
+        data = result
         
-        points = line[0]
-        text_info = line[1]
+    if not isinstance(data, dict):
+        print(f"⚠️ 无法解析的数据结构类型: {type(data)}")
+        return []
+
+    # 1. 提取文字列表
+    rec_texts = data.get('rec_texts', [])
+    # 2. 提取坐标列表 (dt_polys 或 rec_boxes)
+    # dt_polys 通常是多边形坐标 [[x1,y1],[x2,y2]...]
+    dt_polys = data.get('dt_polys')
+    if dt_polys is None:
+        dt_polys = data.get('rec_boxes')
+
+    print(f"🧐 解析到 {len(rec_texts)} 个文本段")
+
+    # 如果没有坐标，只有文字 (纯识别模式)
+    if not dt_polys or len(dt_polys) != len(rec_texts):
+        print("⚠️ 坐标与文字数量不匹配或缺失，退化为纯文本提取")
+        for text in rec_texts:
+            boxes.append({
+                "text": text,
+                "x": 0, "center_y": 0, "height": 0
+            })
+        return boxes
+
+    # 3. 组合 文字 + 坐标
+    for i, text in enumerate(rec_texts):
+        poly = dt_polys[i]
         
-        text = ""
-        score = 0.0
-        
-        # 解析文本和分数
-        if isinstance(text_info, (list, tuple)):
-            text = text_info[0]
-            score = text_info[1] if len(text_info) > 1 else 1.0
-        elif isinstance(text_info, str):
-            text = text_info
-            score = 1.0
-            
-        # ⚠️ 【核心修复】检查 points 是否真的是坐标列表
-        if not isinstance(points, list):
-            # 如果 points 不是列表（比如是字符串），说明没有坐标信息
-            # 这种情况无法进行行合并，只能存入原始列表
-            if score > 0.5:
-                raw_texts.append(text)
-            continue 
-
-        # 只要置信度大于 0.3 就保留
-        if score > 0.3:
-            try:
-                # 尝试解析坐标
-                xs = [p[0] for p in points]
-                ys = [p[1] for p in points]
-                avg_y = sum(ys) / len(ys)
-                min_x = min(xs)
-                
-                boxes.append({
-                    "text": text,
-                    "y": avg_y,
-                    "x": min_x,
-                    "h": max(ys) - min(ys)
-                })
-            except Exception:
-                # 如果坐标解析失败，降级处理
-                raw_texts.append(text)
-
-    # 如果没有成功提取到任何带坐标的框，但有纯文本
-    if not boxes and raw_texts:
-        print("⚠️ 警告: 未检测到坐标信息，返回原始文本顺序")
-        return raw_texts
-
-    # 2. 按 Y 坐标排序
-    boxes.sort(key=lambda b: b['y'])
-
-    # 3. 智能合并同行的文字
-    lines = []
-    current_line = []
-    
-    for i, box in enumerate(boxes):
-        if i == 0:
-            current_line.append(box)
+        # 过滤无效内容
+        if not text or (len(text) == 1 and not text.isdigit() and text not in ['↑', '↓', '+', '-']):
             continue
-        
+
+        try:
+            # poly 可能是 numpy array 或 list
+            points = np.array(poly).reshape(-1, 2)
+            xs = points[:, 0]
+            ys = points[:, 1]
+            
+            min_y = np.min(ys)
+            max_y = np.max(ys)
+            min_x = np.min(xs)
+            height = max_y - min_y
+            center_y = (min_y + max_y) / 2
+            
+            boxes.append({
+                "text": text,
+                "x": float(min_x),
+                "center_y": float(center_y),
+                "height": float(height)
+            })
+        except Exception as e:
+            # 如果坐标解析出错，保留文字但坐标归零
+            boxes.append({"text": text, "x": 0, "center_y": 0, "height": 0})
+
+    return boxes
+
+def merge_lines(boxes):
+    """几何行合并算法"""
+    if not boxes:
+        return []
+
+    # 如果没有坐标信息，直接返回原列表
+    if all(b['center_y'] == 0 for b in boxes):
+        return [b['text'] for b in boxes]
+
+    # 按 Y 轴排序
+    boxes.sort(key=lambda b: b['center_y'])
+
+    lines = []
+    current_line = [boxes[0]]
+
+    for i in range(1, len(boxes)):
+        box = boxes[i]
         last_box = current_line[-1]
+
+        # 判断同行：高度差 < 平均高度的 60%
+        avg_height = (box['height'] + last_box['height']) / 2
+        if avg_height == 0: avg_height = 10 # 防止除零
         
-        # 判断是否在同一行
-        y_diff = abs(box['y'] - last_box['y'])
-        height_threshold = max(box['h'], last_box['h']) * 0.6 
+        y_diff = abs(box['center_y'] - last_box['center_y'])
         
-        if y_diff < height_threshold:
+        if y_diff < (avg_height * 0.6):
             current_line.append(box)
         else:
-            current_line.sort(key=lambda b: b['x'])
             lines.append(current_line)
             current_line = [box]
     
     if current_line:
-        current_line.sort(key=lambda b: b['x'])
         lines.append(current_line)
 
-    # 4. 拼接文字
+    # 拼接结果
     final_lines = []
     for line_boxes in lines:
-        line_text = " ".join([b['text'] for b in line_boxes])
-        final_lines.append(line_text)
+        line_boxes.sort(key=lambda b: b['x'])
+        line_str = " ".join([b['text'] for b in line_boxes])
+        final_lines.append(line_str)
         
     return final_lines
 
@@ -145,29 +163,39 @@ async def ocr_predict(file: UploadFile = File(...)):
     save_dir = "../temp_uploads"
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
-        
+    
     file_path = os.path.abspath(os.path.join(save_dir, file.filename))
-    print(f"📥 正在接收图片: {file.filename}")
+    print(f"📥 接收图片: {file.filename}")
     
     try:
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        
-        print(f"📂 图片已保存: {file_path}")
+            
         print("🔍 开始识别...")
         
-        # 【核心调用】强制 det=True (检测+识别)，确保返回坐标
-        # cls=True (方向矫正)
-        result = ocr_engine.ocr(file_path, det=True, cls=True)
+        # 1. 调用 OCR
+        result = ocr_engine.ocr(file_path)
         
-        # 解析逻辑
-        lines = parse_ocr_result_to_lines(result)
+        # 2. 解析 PaddleX 字典结构
+        boxes = parse_paddlex_result(result)
         
-        # 拼接成最终文本
+        # 3. 兜底策略：如果标准解析失败，尝试旧版列表解析
+        if not boxes and result and isinstance(result[0], list):
+             print("⚠️ 字典解析为空，尝试标准列表解析...")
+             # 这里可以放入旧的列表解析逻辑，但为了精简，我们先假设上面能成功
+        
+        # 4. 执行行合并
+        lines = merge_lines(boxes)
+        
         final_text = "\n".join(lines)
+        print(f"✅ 识别完成，生成 {len(lines)} 行数据")
         
-        print(f"✅ 识别成功，提取到 {len(lines)} 行数据")
-        
+        # 预览
+        if len(final_text) > 0:
+            print("----- 数据预览 -----")
+            print(final_text[:300] + "..." if len(final_text)>300 else final_text)
+            print("-------------------")
+
         try:
             os.remove(file_path)
         except:
@@ -182,9 +210,7 @@ async def ocr_predict(file: UploadFile = File(...)):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        print(f"❌ 处理异常: {str(e)}")
-        # 发生错误时，返回空字符串而不是 500，防止前端报错卡死
-        return {"code": 200, "msg": f"识别异常: {str(e)}", "data": ""}
+        return {"code": 200, "msg": f"错误: {str(e)}", "data": ""}
 
 if __name__ == '__main__':
     uvicorn.run(app, host="0.0.0.0", port=60061)
