@@ -29,10 +29,6 @@ public class ProtectorAspect {
      * 环绕通知
      * 执行前 --- （目标操作） ---执行后
      * 环绕：两端拦截
-     *
-     * @param proceedingJoinPoint 连接点
-     * @return Object
-     * @author 【B站：程序员晨星】
      */
     @Around("@annotation(cn.kmbeast.aop.Protector)")
     public Object auth(ProceedingJoinPoint proceedingJoinPoint) throws Throwable {

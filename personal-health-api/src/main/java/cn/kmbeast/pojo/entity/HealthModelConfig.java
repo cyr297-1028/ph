@@ -24,9 +24,9 @@ public class HealthModelConfig {
      */
     private String detail;
     /**
-     * 图标
+     * 标签
      */
-    private String cover;
+    private String tag;
     /**
      * 单位
      */
@@ -36,7 +36,7 @@ public class HealthModelConfig {
      */
     private String symbol;
     /**
-     * 正常值范围   10,20 (10,20)
+     * 正常值范围
      */
     private String valueRange;
     /**

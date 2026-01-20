@@ -8,6 +8,9 @@ public class HealthModelConfigExcelDTO {
     @ExcelProperty("配置名")
     private String name;
 
+    @ExcelProperty("标签")
+    private String tag;
+
     @ExcelProperty("单位")
     private String unit;
 

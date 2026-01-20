@@ -41,10 +41,7 @@
                             <el-tooltip class="item" effect="dark" :content="'该项配置【' + model.name + '】，点击即可选中'"
                                 placement="bottom">
                                 <el-row style="padding: 20px 0;">
-                                    <el-col :span="4">
-                                        <img :src="model.cover" style="width: 35px;height:35px;margin-top: 5px;">
-                                    </el-col>
-                                    <el-col :span="20">
+                                    <el-col :span="24">
                                         <div style="padding: 0 10px;">
                                             <div style="font-size: 24px;font-weight: bolder;">{{ model.name }}</div>
                                             <div style="font-size: 14px;margin-top: 5px;">
@@ -114,14 +111,6 @@
                 <p class="dialog-title">{{ !isOperation ? '健康模型新增' : '健康模型修改' }}</p>
             </div>
             <div style="padding:0 20px;">
-                <p>*图标</p>
-                <el-row style="margin-top: 10px;">
-                    <el-upload class="avatar-uploader" action="/api/personal-heath/v1.0/file/upload"
-                        :show-file-list="false" :on-success="handleAvatarSuccess">
-                        <img v-if="data.cover" :src="data.cover" style="height: 64px;width: 64px;">
-                        <i v-else class="el-icon-plus avatar-uploader-icon"></i>
-                    </el-upload>
-                </el-row>
                 <el-row style="padding: 0 10px 0 0;">
                     <p>
                         <span class="modelName">*配置名</span>
@@ -173,7 +162,7 @@ export default {
     components: { Logo },
     data() {
         return {
-            data: { cover: '' },
+            data: {},
             userInfo: {},
             modelList: [],
             activeName: 'first',
@@ -181,7 +170,7 @@ export default {
             dialogUserOperaion: false,
             isOperation: false,
             userId: null,
-            selectedModel: [], // 存储已选中并需要录入数据的模型
+            selectedModel: [], 
         };
     },
     created() {
@@ -190,7 +179,6 @@ export default {
         this.getUser();
     },
     methods: {
-        // ================= OCR 与 文件上传核心逻辑 =================
         async customUpload(param) {
             const file = param.file;
             const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
@@ -199,7 +187,7 @@ export default {
             const formData = new FormData();
             formData.append('file', file);
 
-            // 1. 处理 Excel 导入 (保持原有逻辑)
+            // 1. Excel 导入
             if (isExcel) {
                 try {
                     const response = await this.$axios.post('/user-health/import', formData, {
@@ -222,17 +210,16 @@ export default {
                 return;
             }
 
-            // 2. 处理图片/PDF OCR 识别
+            // 2. OCR 识别
             if (isImageOrPdf) {
                 const loading = this.$loading({
                     lock: true,
-                    text: '正在进行智能识别，请稍候...',
+                    text: '正在进行智能识别与入库，请稍候...',
                     spinner: 'el-icon-loading',
                     background: 'rgba(0, 0, 0, 0.7)'
                 });
 
                 try {
-                    // 调用后端 OCR 接口 (请确保后端 OcrController 存在且路径正确)
                     const response = await this.$axios.post('/ocr/recognition', formData, {
                         headers: { 'Content-Type': 'multipart/form-data' }
                     });
@@ -240,13 +227,26 @@ export default {
                     loading.close();
                     
                     if (response.data.code === 200) {
-                        // 支持两种数据结构：
-                        // 1. 结构化数据 (data.structured_items) -> SMR-R1 / 规则提取
-                        // 2. 原始数据 (data.data.items) -> PaddleOCR Raw
                         const resultData = response.data.data;
+
+                        // 【核心修复】防止前端崩溃的关键代码
+                        // 如果后端返回的是成功提示字符串，直接弹窗并跳转
+                        if (typeof resultData === 'string') {
+                            this.$alert(resultData, '处理完成', {
+                                confirmButtonText: '查看记录',
+                                type: 'success',
+                                dangerouslyUseHTMLString: false, 
+                                callback: action => {
+                                    this.$router.push('/user'); 
+                                }
+                            });
+                            return; 
+                        }
+
+                        // 如果后端返回数组（兼容旧逻辑），则填充页面
                         const items = resultData.structured_items || resultData.items || resultData;
-                        
                         this.fillDataFromOCR(items);
+
                     } else {
                         this.$message.error(response.data.msg || '识别失败');
                     }
@@ -261,44 +261,23 @@ export default {
             this.$message.warning('不支持的文件格式，请上传 Excel 或 图片');
         },
 
-        // 将 OCR 结果匹配并填充到页面
         fillDataFromOCR(items) {
+            // 防御性检查：如果是字符串，说明已经处理完了，不再继续
+            if (typeof items === 'string') return;
+
             if (!items || items.length === 0) {
                 this.$message.warning('未能识别到有效文字信息');
                 return;
             }
 
             let matchCount = 0;
-            const matchedIds = new Set(); // 防止重复添加
-
-            // 遍历所有可用模型，尝试在 OCR 结果中找到对应的值
-            // 策略：遍历 OCR 识别出的每一项，看它是否包含了某个模型的名字
-            
-            // 预处理 OCR 数据：如果是 PaddleOCR 的原始 [{text:..., box:...}] 格式，提取 text
             const textLines = items.map(item => {
                 return typeof item === 'string' ? item : (item.text || item.name || '');
             });
 
             this.modelList.forEach(model => {
-                // 1. 尝试精确或模糊匹配名称
-                // 例如：OCR 结果中有 "白细胞计数 5.2"，模型名为 "白细胞"
-                
-                // 如果 items 是结构化的对象数组 (例如 SMR-R1 返回的 {name: 'WBC', result: '5.2'})
-                const structuredItem = items.find(item => 
-                    item.name && (item.name.includes(model.name) || model.name.includes(item.name))
-                );
-
-                if (structuredItem && structuredItem.result) {
-                    this.addAndFillModel(model, structuredItem.result);
-                    matchCount++;
-                    return;
-                }
-
-                // 如果 items 是非结构化的文本列表 (PaddleOCR)
-                // 简单的启发式规则：查找包含模型名的行，并提取其中的数字
                 const line = textLines.find(text => text.includes(model.name));
                 if (line) {
-                    // 提取行内的数字 (例如 "白细胞 5.2" -> 5.2)
                     const numMatch = line.match(/(\d+(\.\d+)?)/);
                     if (numMatch) {
                         this.addAndFillModel(model, numMatch[0]);
@@ -319,25 +298,18 @@ export default {
             }
         },
 
-        // 辅助方法：选中模型并填值
         addAndFillModel(model, value) {
-            // 检查是否已经存在于选中列表
             let selected = this.selectedModel.find(s => s.id === model.id);
             if (!selected) {
-                // 深拷贝防止污染源数据
                 selected = JSON.parse(JSON.stringify(model));
                 this.selectedModel.push(selected);
             }
-            // 填充数值
             this.$set(selected, 'value', value);
         },
 
-        // ================= 原有业务逻辑 =================
-
+        // ... 后面的代码保持不变 ...
         downloadTemplate() {
-            this.$axios.get('/user-health/template', {
-                responseType: 'blob'
-            }).then(response => {
+            this.$axios.get('/user-health/template', { responseType: 'blob' }).then(response => {
                 const blobData = response.data ? response.data : response;
                 const blob = new Blob([blobData], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
                 const link = document.createElement('a');
@@ -345,213 +317,92 @@ export default {
                 link.download = '健康记录导入模板.xlsx';
                 link.click();
                 window.URL.revokeObjectURL(link.href);
-            }).catch(error => {
-                console.error(error);
-                this.$message.error('模板下载失败');
-            });
+            }).catch(error => { console.error(error); this.$message.error('模板下载失败'); });
         },
-
         async clearData() {
-            const confirmed = await this.$swalConfirm({
-                title: "重置数据？",
-                text: `重置之后需要重新输入,是否继续`,
-                icon: 'warning',
-            });
-            if (confirmed) {
-                this.selectedModel = [];
-            }
+            const confirmed = await this.$swalConfirm({ title: "重置数据？", text: `重置之后需要重新输入,是否继续`, icon: 'warning', });
+            if (confirmed) { this.selectedModel = []; }
         },
-        cannel() {
-            this.data = {};
-            this.dialogUserOperaion = false;
-            this.isOperation = false;
-            this.cover = '';
-        },
+        cannel() { this.data = {}; this.dialogUserOperaion = false; this.isOperation = false; },
         updateOperation() {
             this.$axios.put('/health-model-config/update', this.data).then(response => {
-                const { data } = response;
-                if (data.code === 200) {
-                    this.dialogUserOperaion = false;
-                    this.isOperation = false;
-                    this.data = {};
-                    this.$swal.fire({
-                        title: '模型修改',
-                        text: '模型修改成功',
-                        icon: 'success',
-                        showConfirmButton: false,
-                        timer: 1000,
-                    });
+                if (response.data.code === 200) {
+                    this.dialogUserOperaion = false; this.isOperation = false; this.data = {};
+                    this.$swal.fire({ title: '模型修改', text: '模型修改成功', icon: 'success', showConfirmButton: false, timer: 1000, });
                     this.getAllModelConfig();
                 }
             })
         },
-        updateModel(model) {
-            this.data = model;
-            this.dialogUserOperaion = true;
-            this.isOperation = true;
-        },
+        updateModel(model) { this.data = model; this.dialogUserOperaion = true; this.isOperation = true; },
         async deleteModel(model) {
-            const confirmed = await this.$swalConfirm({
-                title: '删除模型【' + model.name + "】",
-                text: `删除后不可恢复，是否继续？`,
-                icon: 'warning',
-            });
+            const confirmed = await this.$swalConfirm({ title: '删除模型【' + model.name + "】", text: `删除后不可恢复，是否继续？`, icon: 'warning', });
             if (confirmed) {
-                const ids = [];
-                ids.push(model.id);
+                const ids = []; ids.push(model.id);
                 this.$axios.post('/health-model-config/batchDelete', ids).then(response => {
-                    const { data } = response;
-                    if (data.code === 200) {
-                        this.$swal.fire({
-                            title: '模型删除',
-                            text: '模型删除成功',
-                            icon: 'success',
-                            showConfirmButton: false,
-                            timer: 1000,
-                        });
+                    if (response.data.code === 200) {
+                        this.$swal.fire({ title: '模型删除', text: '模型删除成功', icon: 'success', showConfirmButton: false, timer: 1000, });
                         this.getAllModelConfig();
                         this.selectedModel = this.selectedModel.filter(entity => entity.id !== model.id);
                     }
                 })
             }
         },
-        goBack() {
-            this.$router.push('/user');
-        },
+        goBack() { this.$router.push('/user'); },
         toRecord() {
             const userHealths = this.selectedModel.map(entity => {
-                return {
-                    healthModelConfigId: entity.id,
-                    value: entity.value
-                }
+                return { healthModelConfigId: entity.id, value: entity.value }
             });
-            if (userHealths.length === 0) {
-                this.$message.warning("请至少录入一项数据");
-                return;
-            }
+            if (userHealths.length === 0) { this.$message.warning("请至少录入一项数据"); return; }
             this.$axios.post('/user-health/save', userHealths).then(response => {
-                const { data } = response;
-                if (data.code === 200) {
-                    this.$notify({
-                        duration: 1000,
-                        title: '记录操作',
-                        message: '记录成功',
-                        type: 'success'
-                    });
-                    setTimeout(() => {
-                        this.$router.push('/user');
-                    }, 2000)
+                if (response.data.code === 200) {
+                    this.$notify({ duration: 1000, title: '记录操作', message: '记录成功', type: 'success' });
+                    setTimeout(() => { this.$router.push('/user'); }, 2000)
                 }
             })
         },
         modelSelected(model) {
             const saveFlag = this.selectedModel.find(entity => entity.id === model.id);
-            if (!saveFlag) {
-                this.selectedModel.push(JSON.parse(JSON.stringify(model))); // 使用副本
-            }
+            if (!saveFlag) { this.selectedModel.push(JSON.parse(JSON.stringify(model))); }
         },
-        searModel() {
-            this.getAllModelConfig();
-        },
-        handleFilterClear() {
-            this.userHealthModel.name = '';
-            this.getAllModelConfig();
-        },
-        handleAvatarSuccess(res, file) {
-            if (res.code !== 200) {
-                this.$message.error(`健康模型封面上传异常`);
-                return;
-            }
-            this.$message.success(`健康模型封面上传成功`);
-            this.data.cover = res.data;
-        },
+        searModel() { this.getAllModelConfig(); },
+        handleFilterClear() { this.userHealthModel.name = ''; this.getAllModelConfig(); },
         getUser() {
             const userInfo = sessionStorage.getItem('userInfo');
-            if (userInfo) {
-                const entity = JSON.parse(userInfo);
-                this.userId = entity.id;
-            }
+            if (userInfo) { const entity = JSON.parse(userInfo); this.userId = entity.id; }
         },
         async addOperation() {
             try {
                 this.data.userId = this.userId;
                 const response = await this.$axios.post('/health-model-config/save', this.data);
-              
                 if (response.data.code === 200) {
-                    this.dialogUserOperaion = false;
-                    this.getAllModelConfig();
-                    this.data = {};
-                    this.$notify.info({
-                        duration: 1000,
-                        title: '模型新增',
-                        message: '新增成功'
-                    });
+                    this.dialogUserOperaion = false; this.getAllModelConfig(); this.data = {};
+                    this.$notify.info({ duration: 1000, title: '模型新增', message: '新增成功' });
                 } else {
-                    this.$notify.info({
-                        duration: 1000,
-                        title: '模型新增',
-                        message: response.data.msg
-                    });
+                    this.$notify.info({ duration: 1000, title: '模型新增', message: response.data.msg });
                 }
-            } catch (error) {
-                console.error('提交表单时出错:', error);
-                this.$message.error('提交失败，请稍后再试！');
-            }
+            } catch (error) { console.error('出错:', error); this.$message.error('提交失败'); }
         },
-        addModel() {
-            this.dialogUserOperaion = true;
-        },
+        addModel() { this.dialogUserOperaion = true; },
         handleClick(tab, event) {
             this.userHealthModel = {};
-            if (this.activeName === 'first') {
-                this.userHealthModel.isGlobal = true;
-            } else {
-                const userInfo = sessionStorage.getItem('userInfo');
-                const entity = JSON.parse(userInfo);
-                this.userHealthModel.userId = entity.id;
+            if (this.activeName === 'first') { this.userHealthModel.isGlobal = true; } else {
+                const userInfo = sessionStorage.getItem('userInfo'); const entity = JSON.parse(userInfo); this.userHealthModel.userId = entity.id;
             }
             this.getAllModelConfig();
         },
         getAllModelConfig() {
             this.$axios.post('/health-model-config/query', this.userHealthModel).then(response => {
-                const { data } = response;
-                if (data.code === 200) {
-                    this.modelList = data.data;
-                }
+                if (response.data.code === 200) { this.modelList = response.data.data; }
             });
         },
         getUserInfo() {
-            const userInfo = sessionStorage.getItem('userInfo');
-            if (userInfo) {
-                this.userInfo = JSON.parse(userInfo);
-            }
+            const userInfo = sessionStorage.getItem('userInfo'); if (userInfo) { this.userInfo = JSON.parse(userInfo); }
         },
     },
 };
 </script>
 <style scoped lang="scss">
-.item-model:hover {
-    cursor: pointer;
-    background-color: #fafafa;
-    border-radius: 5px;
-}
-
-.item-model {
-    padding: 8px;
-    box-sizing: border-box;
-}
-
-.input-model {
-    font-size: 20px;
-    box-sizing: border-box;
-    font-weight: bold;
-    padding: 20px;
-    user-select: none;
-    border-radius: 5px;
-    border: none;
-    outline: none;
-    background-color: #f1f1f1;
-    height: 50px;
-    width: 85%;
-}
+.item-model:hover { cursor: pointer; background-color: #fafafa; border-radius: 5px; }
+.item-model { padding: 8px; box-sizing: border-box; }
+.input-model { font-size: 20px; box-sizing: border-box; font-weight: bold; padding: 20px; user-select: none; border-radius: 5px; border: none; outline: none; background-color: #f1f1f1; height: 50px; width: 85%; }
 </style>

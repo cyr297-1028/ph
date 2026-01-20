@@ -4,14 +4,9 @@ import cn.kmbeast.pojo.entity.UserHealth;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
-@EqualsAndHashCode(callSuper = true)
 @Data
+@EqualsAndHashCode(callSuper = true)
 public class UserHealthVO extends UserHealth {
-
-    /**
-     * 用户名
-     */
-    private String userName;
     /**
      * 健康模型名称
      */
@@ -25,8 +20,11 @@ public class UserHealthVO extends UserHealth {
      */
     private String symbol;
     /**
-     * 模型配置的正常值范围
+     * 健康模型阈值
      */
     private String valueRange;
-
+    /**
+     * 标签/分类
+     */
+    private String tag;
 }

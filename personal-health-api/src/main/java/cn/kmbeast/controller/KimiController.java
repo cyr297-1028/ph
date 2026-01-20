@@ -40,7 +40,7 @@ public class KimiController {
 
     private static final MediaType mediaType = MediaType.get("application/json; charset=utf-8");
     private static final String API_URL = "https://api.moonshot.cn/v1/chat/completions";
-    // 请确保 API KEY 有效
+    //API KEY
     private static final String API_KEY = "sk-erWCzbuAUBFdKQlD6jsln7HQjHRYWUJxLoWMKFXEDVOxcseE";
 
     /**

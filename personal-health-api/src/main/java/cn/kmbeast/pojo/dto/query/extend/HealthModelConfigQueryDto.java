@@ -27,6 +27,12 @@ public class HealthModelConfigQueryDto extends QueryDto {
      * 配置名
      */
     private String name;
+
+    /**
+     * 标签 (新增属性，修复报错的关键)
+     */
+    private String tag;
+
     /**
      * 配置简介
      */

@@ -25,8 +25,8 @@ public class InterceptorConfig implements WebMvcConfigurer {
                 .excludePathPatterns(
                         "/user/login",       // 账号登录
                         "/user/register",    // 用户注册
-                        "/user/faceLogin",   // 【新增】刷脸登录 (必须放行，因为还没Token)
-                        "/user/addFace",     // 【新增】人脸录入 (必须放行，注册时还没Token)
+                        "/user/faceLogin",   // 刷脸登录 (必须放行，因为还没Token)
+                        "/user/addFace",     // 人脸录入 (必须放行，注册时还没Token)
                         "/file/**",          // 文件访问
                         "/doc.html",         // Swagger文档
                         "/webjars/**",

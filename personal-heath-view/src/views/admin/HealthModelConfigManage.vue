@@ -30,12 +30,12 @@
         </el-row>
         <el-row style="margin: 0 20px;border-top: 1px solid rgb(245,245,245);">
             <el-table row-key="id" @selection-change="handleSelectionChange" :data="tableData" style="width: 100%">
-                <el-table-column prop="cover" width="80" label="模型图">
+                <el-table-column prop="name" width="180" label="模型名"></el-table-column>
+                <el-table-column prop="tag" width="120" label="标签/分类">
                     <template slot-scope="scope">
-                        <img :src="scope.row.cover" style="width: 30px;height: 30px;border-radius: 5px;" />
+                        <el-tag size="mini" v-if="scope.row.tag">{{ scope.row.tag }}</el-tag>
                     </template>
                 </el-table-column>
-                <el-table-column prop="name" width="218" label="模型名"></el-table-column>
                 <el-table-column prop="isGlobal" label="权限" width="128">
                     <template slot-scope="scope">
                         <span>{{ scope.row.isGlobal ? '全局模型' : '私有模型' }}</span>
@@ -62,19 +62,17 @@
                 <p class="dialog-title">{{ !isOperation ? '健康模型新增' : '健康模型修改' }}</p>
             </div>
             <div style="padding:0 20px;">
-                <p>*图标</p>
-                <el-row style="margin-top: 10px;">
-                    <el-upload class="avatar-uploader" action="/api/personal-heath/v1.0/file/upload"
-                        :show-file-list="false" :on-success="handleAvatarSuccess">
-                        <img v-if="data.cover" :src="data.cover" style="height: 64px;width: 64px;">
-                        <i v-else class="el-icon-plus avatar-uploader-icon"></i>
-                    </el-upload>
-                </el-row>
                 <el-row style="padding: 0 10px 0 0;">
                     <p>
                         <span class="modelName">*配置名</span>
                     </p>
                     <input class="input-title" v-model="data.name" placeholder="请输入">
+                </el-row>
+                <el-row style="padding: 0 10px 0 0;">
+                    <p>
+                        <span class="modelName">标签 (可选)</span>
+                    </p>
+                    <input class="input-title" v-model="data.tag" placeholder="例如：肾功能、血常规">
                 </el-row>
                 <el-row style="padding: 0 10px 0 0;">
                     <p style="font-size: 12px;padding: 3px 0;">
@@ -119,18 +117,18 @@
 export default {
     data() {
         return {
-            data: { cover: '' },
+            data: {}, // 【修改】移除了 cover: ''
             filterText: '',
             currentPage: 1,
             pageSize: 10,
             totalItems: 0,
-            dialogUserOperaion: false, // 开关
-            isOperation: false, // 开关-标识新增或修改
+            dialogUserOperaion: false, 
+            isOperation: false, 
             tableData: [],
             searchTime: [],
             selectedRows: [],
             status: null,
-            healthModelConfigQueryDto: {}, // 搜索条件
+            healthModelConfigQueryDto: {}, 
             messsageContent: '',
             tagsList: [],
             valuesRange: [10, 50]
@@ -140,7 +138,6 @@ export default {
         this.fetchFreshData();
     },
     computed: {
-        // 获取鉴权 Token，用于上传组件
         headers() {
             return {
                 token: sessionStorage.getItem("token")
@@ -148,10 +145,9 @@ export default {
         }
     },
     methods: {
-        // 下载模板
         downloadTemplate() {
             this.$axios.get('/health-model-config/template', {
-                responseType: 'blob' // 必须指定 blob 类型
+                responseType: 'blob' 
             }).then(response => {
                 const blobData = response.data ? response.data : response;
                 const blob = new Blob([blobData], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -165,34 +161,21 @@ export default {
                 this.$message.error('模板下载失败');
             });
         },
-        // 导入成功回调
         handleImportSuccess(res) {
             if (res.code === 200) {
-                this.$message.success('全局模型导入成功');
-                this.fetchFreshData(); // 刷新数据
+                this.$message.success(res.msg || '全局模型导入成功');
+                this.fetchFreshData(); 
             } else {
                 this.$message.error(res.msg || '导入失败');
             }
         },
-        // 导入失败回调
         handleImportError(err) {
             this.$message.error('网络异常，导入失败');
         },
-
-        handleAvatarSuccess(res, file) {
-            this.$notify({
-                duration: 2000,
-                title: '图标上传',
-                message: res.code === 200 ? '成功' : '异常',
-                type: res.code === 200 ? 'success' : 'error'
-            });
-            this.data.cover = res.data;
-        },
-        // 多选框选中
+        // 【修改】移除了 handleAvatarSuccess
         handleSelectionChange(selection) {
             this.selectedRows = selection;
         },
-        // 批量删除数据
         async batchDelete() {
             if (!this.selectedRows.length) {
                 this.$message(`未选中任何数据`);
@@ -227,7 +210,6 @@ export default {
             this.searchTime = [];
             this.fetchFreshData();
         },
-        // 修改信息
         async updateOperation() {
             this.$axios.put('/health-model-config/update', this.data).then(res => {
                 if (res.data.code === 200) {
@@ -250,7 +232,6 @@ export default {
             this.data = {};
             this.valueRange = null;
         },
-        // 模型新增
         addOperation() {
             this.$axios.post('/health-model-config/config/save', this.data).then(res => {
                 if (res.data.code === 200) {
@@ -274,7 +255,6 @@ export default {
                 console.log('模型新增异常=>', error);
             })
         },
-        // 模型查询
         async fetchFreshData() {
             try {
                 this.tableData = [];
@@ -285,7 +265,6 @@ export default {
                     startTime = `${startDate.split('T')[0]}T00:00:00`;
                     endTime = `${endDate.split('T')[0]}T23:59:59`;
                 }
-                // 请求参数
                 const params = {
                     current: this.currentPage,
                     size: this.pageSize,

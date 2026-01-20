@@ -21,12 +21,20 @@
         
         <div style="padding: 30px 0;">
             <div style="margin: 20px 0;">
+                <span style="font-weight: bold; margin-right: 10px; color: #606266;">趋势分析：</span>
                 <el-select size="small" @change="modelChange(365)" v-model="userHealthQueryDto.healthModelConfigId"
-                    placeholder="请选择">
-                    <el-option v-for="model in usersHealthModelConfig" :key="model.id" :label="model.name"
-                        :value="model.id">
+                    placeholder="请选择健康指标" style="width: 300px;">
+                    <el-option v-for="model in usersHealthModelConfig" :key="model.id" :label="model.name" :value="model.id">
+                        <span style="float: left">{{ model.name }}</span>
+                        <span v-if="model.tag" style="float: right; color: #8492a6; font-size: 12px; margin-left: 15px;">
+                            <span :style="{color: getTagColor(model.tag), fontWeight: 'bold'}">● {{ model.tag }}</span>
+                        </span>
                     </el-option>
                 </el-select>
+                <el-tag v-if="currentSelectedTag" size="small" 
+                    :style="{ backgroundColor: getTagColor(currentSelectedTag), color: '#fff', border: 'none', marginLeft: '10px' }">
+                    {{ currentSelectedTag }}
+                </el-tag>
             </div>
             <div>
                 <div v-if="values.length === 0">
@@ -39,51 +47,79 @@
         </div>
         
         <div>
-            <h2 style="padding-left: 20px;border-left: 2px solid rgb(43, 121, 203);">健康指标数据</h2>
-            <el-row style="padding: 10px;margin-left: 10px;">
+            <h2 style="padding-left: 20px;border-left: 4px solid #409EFF; margin-bottom: 20px;">健康指标数据明细</h2>
+            
+            <el-row style="padding: 10px;margin-left: 10px; background-color: #fff; border-radius: 4px;">
                 <el-row style="display: flex;justify-content: left;align-items: center;gap: 10px;">
-                    <el-select size="small" @change="fetchFreshData" v-model="healthModelConfigId" placeholder="请选择模型项">
-                        <el-option :key="null" label="全部" :value="null"></el-option>
-                        <el-option v-for="model in usersHealthModelConfig" :key="model.id" :label="model.name" :value="model.id"></el-option>
+                    <el-select size="small" @change="fetchFreshData" v-model="healthModelConfigId" placeholder="按指标筛选" clearable>
+                        <el-option v-for="model in usersHealthModelConfig" :key="model.id" :label="model.name" :value="model.id">
+                            <span style="float: left">{{ model.name }}</span>
+                            <span v-if="model.tag" style="float: right; color: #8492a6; font-size: 12px;">{{ model.tag }}</span>
+                        </el-option>
                     </el-select>
-                    <el-date-picker size="small" @change="timeChange" style="width: 220px;" v-model="searchTime"
-                        type="daterange" range-separator="至" start-placeholder="记录开始" end-placeholder="记录结束">
+                    
+                    <el-date-picker size="small" @change="timeChange" style="width: 240px;" v-model="searchTime"
+                        type="daterange" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期">
                     </el-date-picker>
                 </el-row>
             </el-row>
-            <el-row style="margin: 0 20px;border-top: 1px solid rgb(245,245,245);">
-                <el-table row-key="id" @selection-change="handleSelectionChange" :data="tableData">
-                    <el-table-column prop="name" label="指标项">
+
+            <el-row style="margin: 0 20px; border-top: 1px solid #EBEEF5;">
+                <el-table row-key="id" @selection-change="handleSelectionChange" :data="tableData" stripe>
+                    
+                    <el-table-column prop="name" label="指标项" min-width="160">
                         <template slot-scope="scope">
-                            <span><i class="el-icon-paperclip" style="margin-right: 3px;"></i>{{ scope.row.name }}</span>
+                            <span style="font-weight: 500;">{{ scope.row.name }}</span>
+                            <el-tag v-if="scope.row.tag" size="mini" effect="dark"
+                                :style="{ 
+                                    backgroundColor: getTagColor(scope.row.tag), 
+                                    borderColor: getTagColor(scope.row.tag),
+                                    marginLeft: '8px',
+                                    borderRadius: '10px',
+                                    padding: '0 8px'
+                                }">
+                                {{ scope.row.tag }}
+                            </el-tag>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="value" width="148" label="数值" sortable>
+
+                    <el-table-column prop="value" width="150" label="数值" sortable>
                         <template slot-scope="scope">
-                            <span style="font-weight: 800;">{{ scope.row.value }}&nbsp;{{ scope.row.unit }}</span>
+                            <span style="font-weight: bold; font-size: 15px; color: #303133;">
+                                {{ scope.row.value }}
+                            </span>
+                            <span style="font-size: 12px; color: #909399; margin-left: 4px;">{{ scope.row.unit }}</span>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="symbol" width="108" label="模型符号"></el-table-column>
-                    <el-table-column prop="name" width="88" label="状态">
+
+                    <el-table-column prop="symbol" width="100" label="符号" align="center">
                         <template slot-scope="scope">
-                            <i v-if="!statusCheck(scope.row)" style="margin-right: 5px;" class="el-icon-warning"></i>
-                            <i v-else style="margin-right: 5px;color: rgb(253, 199, 50);" class="el-icon-success"></i>
-                            <el-tooltip v-if="!statusCheck(scope.row)" class="item" effect="dark"
-                                content="异常指标，提醒用户及时处理" placement="bottom-end">
-                                <span style="text-decoration: underline;text-decoration-style: dashed;">异常</span>
-                            </el-tooltip>
-                            <span v-else>正常</span>
+                            <el-tag type="info" size="mini" effect="plain">{{ scope.row.symbol || '-' }}</el-tag>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="createTime" width="178" label="记录时间" sortable></el-table-column>
-                    <el-table-column label="操作" width="80">
+
+                    <el-table-column prop="name" width="100" label="状态" align="center">
                         <template slot-scope="scope">
-                            <span class="text-button" @click="handleDelete(scope.row)">删除</span>
+                            <template v-if="!statusCheck(scope.row)">
+                                <el-tag type="danger" size="small" effect="dark">异常</el-tag>
+                            </template>
+                            <template v-else>
+                                <el-tag type="success" size="small" effect="light">正常</el-tag>
+                            </template>
+                        </template>
+                    </el-table-column>
+
+                    <el-table-column prop="createTime" width="180" label="记录时间" sortable align="center" class-name="time-col"></el-table-column>
+                    
+                    <el-table-column label="操作" width="100" align="center">
+                        <template slot-scope="scope">
+                            <el-button type="text" style="color: #F56C6C;" icon="el-icon-delete" @click="handleDelete(scope.row)">删除</el-button>
                         </template>
                     </el-table-column>
                 </el-table>
-                <el-pagination style="margin: 20px 0;" @size-change="handleSizeChange"
-                    @current-change="handleCurrentChange" :current-page="currentPage" :page-sizes="[10, 20]"
+                
+                <el-pagination style="margin: 20px 0; text-align: right;" @size-change="handleSizeChange"
+                    @current-change="handleCurrentChange" :current-page="currentPage" :page-sizes="[10, 20, 50]"
                     :page-size="pageSize" layout="total, sizes, prev, pager, next, jumper"
                     :total="totalItems"></el-pagination>
             </el-row>
@@ -142,6 +178,12 @@ export default {
         renderedAnalysis() {
             if (!this.analysisResult) return '';
             return marked(this.analysisResult);
+        },
+        // 获取当前选中模型的标签
+        currentSelectedTag() {
+            if (!this.userHealthQueryDto.healthModelConfigId) return null;
+            const model = this.usersHealthModelConfig.find(m => m.id === this.userHealthQueryDto.healthModelConfigId);
+            return model ? model.tag : null;
         }
     },
     created() {
@@ -149,6 +191,28 @@ export default {
         this.fetchFreshData();
     },
     methods: {
+        // 【核心算法】根据标签分配颜色
+        getTagColor(tag) {
+            if (!tag) return '#909399';
+            const colors = {
+                '血常规': '#409EFF',   // 品牌蓝
+                '肝功能': '#67C23A',   // 成功绿
+                '肾功能': '#E6A23C',   // 警告黄
+                '血脂': '#F56C6C',     // 危险红
+                '血糖': '#9B59B6',     // 紫色
+                '尿常规': '#FF9F43',   // 橙色
+                '甲状腺': '#E91E63',   // 粉色
+                '电解质': '#1ABC9C',   // 青色
+                '心血管': '#C0392B',   // 深红
+                '肿瘤': '#34495E',     // 深灰
+                '炎症': '#D35400'      // 南瓜色
+            };
+            // 模糊匹配
+            for (const key in colors) {
+                if (tag.includes(key)) return colors[key];
+            }
+            return '#909399'; // 默认灰
+        },
         timeChange() {
             this.currentPage = 1;
             this.fetchFreshData();
@@ -161,7 +225,12 @@ export default {
             let { value, valueRange } = data;
             if (!valueRange || String(valueRange).trim() === '' || valueRange === 'null') return true; 
             if (value === null || value === undefined || String(value).trim() === '') return true;
+            
+            // 兼容性处理
             valueRange = valueRange.replace('，', ',');
+            valueRange = valueRange.replace(' - ', ',');
+            valueRange = valueRange.replace('~', ',');
+            
             if (valueRange.indexOf(',') === -1) return true;
             const parts = valueRange.split(',');
             const min = parseFloat(parts[0]);
@@ -186,16 +255,16 @@ export default {
                     const response = await this.$axios.post(`/user-health/batchDelete`, ids);
                     if (response.data.code === 200) {
                         this.$swal.fire({
-                            title: '删除提示',
-                            text: response.data.msg,
+                            title: '删除成功',
+                            text: '数据已删除',
                             icon: 'success',
                             showConfirmButton: false,
-                            timer: 2000,
+                            timer: 1500,
                         });
                         this.fetchFreshData();
                     }
                 } catch (e) {
-                    console.error(`用户健康记录信息删除异常：`, e);
+                    console.error(`删除异常：`, e);
                 }
             }
         },
@@ -223,7 +292,7 @@ export default {
                 this.tableData = data.data;
                 this.totalItems = data.total;
             } catch (error) {
-                console.error('查询用户健康记录信息异常:', error);
+                console.error('查询异常:', error);
             }
         },
         handleSelectionChange(selection) {
@@ -281,41 +350,26 @@ export default {
         },
         async startAnalysis() {
             this.analyzing = true;
-            this.$message.info('正在请求 AI 分析，生成报告可能需要 1-2 分钟，请耐心等待...');
-            
+            this.$message.info('正在请求 AI 分析，请耐心等待...');
             try {
-                // 【核心修改】responseType 设置为 'blob'，表示二进制流（文件）
                 const response = await this.$axios.get('/kimi/analyze', {
                     responseType: 'blob', 
-                    timeout: 300000 // 5分钟超时
+                    timeout: 300000 
                 });
-
-                // 创建下载链接
                 const blob = new Blob([response.data], { type: 'text/plain;charset=utf-8' });
                 const downloadUrl = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = downloadUrl;
-                // 设置下载文件名
                 link.setAttribute('download', `健康分析报告_${new Date().getTime()}.txt`);
                 document.body.appendChild(link);
                 link.click();
-                
-                // 清理
                 document.body.removeChild(link);
                 window.URL.revokeObjectURL(downloadUrl);
-
-                this.$message.success('分析成功！报告已下载到您的电脑。');
-                
-                // 关闭弹窗（因为不再在弹窗里显示了）
+                this.$message.success('报告已下载');
                 this.showAnalysisDialog = false;
-
             } catch (error) {
-                console.error('分析请求失败:', error);
-                if (error.code === 'ECONNABORTED') {
-                    this.$message.error('AI 思考时间过长，网络请求超时，请检查网络');
-                } else {
-                    this.$message.error('下载报告失败，请稍后重试');
-                }
+                console.error('分析失败:', error);
+                this.$message.error('下载报告失败，请稍后重试');
             } finally {
                 this.analyzing = false;
             }
@@ -332,6 +386,5 @@ export default {
     li { list-style-type: disc; }
     strong { color: #333; font-weight: 700; }
 }
-.status-success { display: inline-block; padding: 1px 5px; border-radius: 2px; background-color: rgb(201, 237, 249); color: rgb(111, 106, 196); font-size: 12px; }
-.status-error { display: inline-block; padding: 1px 5px; border-radius: 2px; background-color: rgb(233, 226, 134); color: rgb(131, 138, 142); color: rgb(111, 106, 196); font-size: 12px; }
+.time-col { color: #909399; font-size: 12px; }
 </style>
