@@ -84,7 +84,7 @@ public class OcrController {
 
                         if (savedCount > 0) {
                             String msg = "识别成功！已自动匹配并保存 " + savedCount + " 项数据。\n请点击“确定”查看结果。";
-                            // 【修复关键】将消息也作为 data 返回，防止前端因 data 为 null 而报错
+                            // 将消息也作为 data 返回，防止前端因 data 为 null 而报错
                             return ApiResult.success(msg, msg);
                         } else {
                             String preview = ocrText.length() > 100 ? ocrText.substring(0, 100) + "..." : ocrText;
