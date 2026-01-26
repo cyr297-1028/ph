@@ -42,7 +42,7 @@ public class HealthModelConfigServiceImpl implements HealthModelConfigService {
 
     /**
      * 导出带有下拉选项的 Excel 模板
-     * 【修复关键】增加 .inMemory(true) 防止文件损坏
+     * 增加 .inMemory(true) 防止文件损坏
      */
     @Override
     public void exportTemplate(HttpServletResponse response) {
@@ -70,7 +70,7 @@ public class HealthModelConfigServiceImpl implements HealthModelConfigService {
             list.add(example);
 
             EasyExcel.write(response.getOutputStream(), HealthModelConfigExcelDTO.class)
-                    .inMemory(true) // <--- 关键修复！强制使用内存模式，解决 Excel 打开报错问题
+                    .inMemory(true) // <--- 强制使用内存模式，解决 Excel 打开报错问题
                     .registerWriteHandler(new DropdownWriteHandler(modelNames))
                     .sheet("模板")
                     .doWrite(list);
@@ -88,10 +88,6 @@ public class HealthModelConfigServiceImpl implements HealthModelConfigService {
             }
         }
     }
-
-    // ... (中间的 importData, save, update 等方法保持不变，直接复制您现有的即可) ...
-    // 为了节省篇幅，这里省略中间未修改的代码，请保留您原有的 importData 等逻辑
-    // 重点是下方的 DropdownWriteHandler 内部类
 
     @Override
     public Result<Void> importData(MultipartFile file, Boolean isGlobal) {

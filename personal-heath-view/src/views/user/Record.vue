@@ -40,21 +40,17 @@
                             :key="index">
                             <el-tooltip class="item" effect="dark" :content="'该项配置【' + model.name + '】，点击即可选中'"
                                 placement="bottom">
-                                <el-row style="padding: 20px 0;">
+                                <el-row style="padding: 10px 0;">
                                     <el-col :span="24">
                                         <div style="padding: 0 10px;">
-                                            <div style="font-size: 24px;font-weight: bolder; display: flex; align-items: center;">
-                                                {{ model.name }}
-                                                <el-tag v-if="model.tag" size="mini" effect="dark"
-                                                    :style="{ 
-                                                        backgroundColor: getTagColor(model.tag), 
-                                                        border: 'none', 
-                                                        marginLeft: '8px',
-                                                        borderRadius: '4px',
-                                                        height: '20px',
-                                                        lineHeight: '20px',
-                                                        padding: '0 5px'
-                                                    }">
+                                            <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 5px;">
+                                                <div style="font-size: 24px;font-weight: bolder;">{{ model.name }}</div>
+                                                <el-tag 
+                                                    v-if="model.tag" 
+                                                    size="mini" 
+                                                    effect="dark"
+                                                    :color="getTagColor(model.tag)"
+                                                    style="border: none; color: #fff; margin-left: 5px;">
                                                     {{ model.tag }}
                                                 </el-tag>
                                             </div>
@@ -62,9 +58,9 @@
                                                 <span>{{ model.unit }}</span>
                                                 <span style="margin-left: 10px;">{{ model.symbol }}</span>
                                                 <span @click.stop="updateModel(model)" v-if="!model.isGlobal"
-                                                    style="margin-left: 10px;color: #333;cursor: pointer;">修改</span>
+                                                    style="margin-left: 10px;color: #333;">修改</span>
                                                 <span @click.stop="deleteModel(model)" v-if="!model.isGlobal"
-                                                    style="margin-left: 10px;color: red;cursor: pointer;">删除</span>
+                                                    style="margin-left: 10px;color: red;">删除</span>
                                             </div>
                                         </div>
                                     </el-col>
@@ -97,23 +93,16 @@
 
                         <el-row>
                             <el-row v-if="selectedModel.length === 0">
-                                <el-empty description="请从左侧选择模型，或使用智能导入"></el-empty>
+                                <el-empty description="请选择模型或使用智能导入"></el-empty>
                             </el-row>
-                            <el-row :gutter="20">
-                                <el-col :span="12" v-for="(model, index) in selectedModel" :key="index" style="margin-bottom: 20px;">
-                                    <div style="margin-bottom: 8px; font-weight: bold; display: flex; align-items: center;">
-                                        {{ model.name }} ({{ model.unit }})
-                                        <el-tag v-if="model.tag" size="mini" effect="plain"
-                                            :style="{ 
-                                                color: getTagColor(model.tag),
-                                                borderColor: getTagColor(model.tag),
-                                                marginLeft: '8px'
-                                            }">
-                                            {{ model.tag }}
-                                        </el-tag>
-                                    </div>
+                            <el-row>
+                                <el-col :span="12" v-for="(model, index) in selectedModel" :key="index">
+                                    <h3>
+                                        {{ model.name }}({{ model.unit }})
+                                        <el-tag v-if="model.tag" size="mini" effect="plain" type="info">{{ model.tag }}</el-tag>
+                                    </h3>
                                     <input type="text" v-model="model.value" class="input-model"
-                                        :placeholder="'正常值范围：' + (model.valueRange || '无')">
+                                        :placeholder="'正常值范围：' + model.valueRange">
                                 </el-col>
                             </el-row>
                         </el-row>
@@ -126,9 +115,10 @@
                             <i class="el-icon-right"></i>
                         </span>
 
-                        <span @mousedown="startRecording" @mouseup="stopRecording" style="cursor: pointer;
-                            padding: 10px 20px;background-color: #409EFF;border-radius: 5px;color: #fff;margin-left: 20px;user-select: none;">
-                            <i class="el-icon-microphone"></i> {{ isRecording ? '松开结束' : '按住说话' }}
+                        <span @mousedown="startRecording" @mouseup="stopRecording"
+                            style="cursor: pointer;padding: 10px 20px;background-color: #409EFF;border-radius: 5px;color: #fff;margin-left: 20px;user-select: none;">
+                            <i class="el-icon-microphone"></i>
+                            {{ isRecording ? '松开结束' : '按住说话' }}
                         </span>
                     </div>
                 </el-col>
@@ -140,28 +130,48 @@
                 <p class="dialog-title">{{ !isOperation ? '健康模型新增' : '健康模型修改' }}</p>
             </div>
             <div style="padding:0 20px;">
+                <p>*图标</p>
+                <el-row style="margin-top: 10px;">
+                    <el-upload class="avatar-uploader" action="/api/personal-heath/v1.0/file/upload"
+                        :show-file-list="false" :on-success="handleAvatarSuccess">
+                        <img v-if="data.cover" :src="data.cover" style="height: 64px;width: 64px;">
+                        <i v-else class="el-icon-plus avatar-uploader-icon"></i>
+                    </el-upload>
+                </el-row>
                 <el-row style="padding: 0 10px 0 0;">
-                    <p><span class="modelName">*配置名</span></p>
+                    <p>
+                        <span class="modelName">*配置名</span>
+                    </p>
                     <input class="input-title" v-model="data.name" placeholder="请输入">
                 </el-row>
                 <el-row style="padding: 0 10px 0 0;">
-                    <p><span class="modelName">标签 (可选)</span></p>
-                    <input class="input-title" v-model="data.tag" placeholder="例如: 血常规">
+                    <p style="font-size: 12px;padding: 3px 0;">
+                        <span class="modelName">标签 (选填)</span>
+                    </p>
+                    <input class="input-title" v-model="data.tag" placeholder="例如：基础数据、慢病管理">
                 </el-row>
                 <el-row style="padding: 0 10px 0 0;">
-                    <p><span class="modelName">*单位</span></p>
+                    <p style="font-size: 12px;padding: 3px 0;">
+                        <span class="modelName">*单位</span>
+                    </p>
                     <input class="input-title" v-model="data.unit" placeholder="请输入">
                 </el-row>
                 <el-row style="padding: 0 10px 0 0;">
-                    <p><span class="modelName">*符号</span></p>
+                    <p style="font-size: 12px;padding: 3px 0;">
+                        <span class="modelName">*符号</span>
+                    </p>
                     <input class="input-title" v-model="data.symbol" placeholder="请输入">
                 </el-row>
                 <el-row style="padding: 0 20px 0 0;">
-                    <p><span class="modelName">*阈值（格式：最小值,最大值）</span></p>
+                    <p style="font-size: 12px;padding: 3px 0;">
+                        <span class="modelName">*阈值（格式：最小值,最大值）</span>
+                    </p>
                     <input class="input-title" v-model="data.valueRange" placeholder="请输入">
                 </el-row>
                 <el-row style="padding: 0 10px 0 0;">
-                    <p><span class="modelName">*简介</span></p>
+                    <p style="font-size: 12px;padding: 3px 0;">
+                        <span class="modelName">*简介</span>
+                    </p>
                     <el-input type="textarea" :autosize="{ minRows: 2, maxRows: 3 }" placeholder="简介"
                         v-model="data.detail">
                     </el-input>
@@ -180,16 +190,17 @@
 </template>
 
 <script>
-import Logo from '@/components/Logo';
+// 修改处：加回了录音库的引用
 import Recorder from 'recorder-core'
 import 'recorder-core/src/engine/mp3'
 import 'recorder-core/src/engine/mp3-engine'
+import Logo from '@/components/Logo';
 
 export default {
     components: { Logo },
     data() {
         return {
-            data: {},
+            data: { cover: '' },
             userInfo: {},
             modelList: [],
             activeName: 'first',
@@ -198,6 +209,7 @@ export default {
             isOperation: false,
             userId: null,
             selectedModel: [], 
+            // 修改处：加回了录音状态变量
             isRecording: false,
             rec: null
         };
@@ -208,31 +220,19 @@ export default {
         this.getUser();
     },
     methods: {
-        // 获取标签颜色
-        getTagColor(tag) {
-            if (!tag) return '#999';
-            const colors = {
-                '血常规': '#409EFF', // 蓝
-                '肝功能': '#67C23A', // 绿
-                '肾功能': '#E6A23C', // 黄
-                '血脂': '#F56C6C',   // 红
-                '血糖': '#909399',   // 灰
-                '尿常规': '#FF9900', // 橙
-                '甲状腺': '#8E44AD', // 紫
-                '电解质': '#16A085', // 青
-                '凝血功能': '#D35400', // 深橙
-                '炎症指标': '#C0392B', // 深红
-                '肿瘤标志物': '#2C3E50', // 深蓝灰
-                '血气分析': '#8E44AD'  // 紫
-
-            };
-            for (const key in colors) {
-                if (tag.includes(key)) return colors[key];
-            }
-            return '#333'; // 默认黑色
+        getTagColor(tagName) {
+            if (!tagName) return '#909399'; 
+            if (['基础数据', '基础体征', '身体测量', '身体成分'].includes(tagName)) return '#409EFF'; 
+            if (['慢病管理', '内分泌', '激素'].includes(tagName)) return '#E6A23C';
+            if (['循环系统', '呼吸循环', '急诊', '急诊指标'].includes(tagName)) return '#F56C6C';
+            if (['运动睡眠', '睡眠运动'].includes(tagName)) return '#13ce66';
+            if (['传染病四项', 'STD八项', 'HPV全项', '其他病原体'].includes(tagName)) return '#722ed1';
+            if (['妇产', '妇产科', '乙肝', '乙肝五项', '幽门螺杆菌', '炎症', '炎症感染'].includes(tagName)) return '#eb2f96';
+            if (['消化', '排泄物', '尿液', '尿液检查'].includes(tagName)) return '#009688';
+            return '#409EFF'; 
         },
-        //语音识别功能实现
-        // 1. 开始录音
+
+        //语音识别逻辑
         startRecording() {
             this.rec = Recorder({
                 type: "mp3",
@@ -249,29 +249,23 @@ export default {
             });
         },
 
-        // 2. 结束录音并上传
         stopRecording() {
             if (!this.rec) return;
             this.rec.stop((blob, duration) => {
                 this.isRecording = false;
-                this.rec.close(); // 释放资源
-                
-                // 上传录音文件
+                this.rec.close(); 
                 this.uploadVoice(blob);
             }, (msg) => {
                 this.$message.error("录音失败:" + msg);
             });
         },
 
-        // 3. 上传并识别
         async uploadVoice(blob) {
             const loading = this.$loading({ text: '正在识别语音...', spinner: 'el-icon-loading' });
             const formData = new FormData();
-            // 注意：文件名后缀要和后端 VoiceFormat 一致
             formData.append("file", blob, "voice.mp3");
 
             try {
-                // 调用刚才写的后端接口
                 const res = await this.$axios.post('/voice/recognize', formData, {
                     headers: { 'Content-Type': 'multipart/form-data' }
                 });
@@ -280,14 +274,15 @@ export default {
 
                 if (res.data.code === 200) {
                     const text = res.data.data;
-                    this.$notify({ title: '识别结果', message: text, type: 'success' });
                     
-                    // 4. 复用 OCR 的解析逻辑填充数据！
-                    // 构造成数组格式以适配 fillDataFromOCR
+                    if (!text || text.trim().length === 0) {
+                        this.$message.warning('未检测到语音内容，请说话');
+                        return; 
+                    }
+
+                    this.$notify({ title: '识别结果', message: text, type: 'success' });
                     this.fillDataFromOCR([text]); 
 
-                    // 5. (可选) 自动入库
-                    // 如果匹配到了数据，可以尝试自动保存，或者让用户确认后再点击“立即记录”
                     setTimeout(() => {
                         if (this.selectedModel.length > 0 && this.selectedModel.some(m => m.value)) {
                             this.$confirm(`识别到数据：${text}，是否立即保存？`, '提示', {
@@ -295,7 +290,7 @@ export default {
                                 cancelButtonText: '稍后',
                                 type: 'success'
                             }).then(() => {
-                                this.toRecord(); // 调用保存方法
+                                this.toRecord();
                             }).catch(() => {});
                         }
                     }, 500);
@@ -310,6 +305,7 @@ export default {
             }
         },
 
+        // OCR 与 文件上传核心逻辑
         async customUpload(param) {
             const file = param.file;
             const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
@@ -318,7 +314,7 @@ export default {
             const formData = new FormData();
             formData.append('file', file);
 
-            // 1. Excel 导入
+            // 1. 处理 Excel 导入 
             if (isExcel) {
                 try {
                     const response = await this.$axios.post('/user-health/import', formData, {
@@ -341,11 +337,11 @@ export default {
                 return;
             }
 
-            // 2. OCR 识别
+            // 2. 处理图片/PDF OCR 识别
             if (isImageOrPdf) {
                 const loading = this.$loading({
                     lock: true,
-                    text: '正在进行智能识别与入库，请稍候...',
+                    text: '正在进行智能识别，请稍候...',
                     spinner: 'el-icon-loading',
                     background: 'rgba(0, 0, 0, 0.7)'
                 });
@@ -359,24 +355,8 @@ export default {
                     
                     if (response.data.code === 200) {
                         const resultData = response.data.data;
-
-                        // 核心修复：如果是字符串，直接弹窗
-                        if (typeof resultData === 'string') {
-                            this.$alert(resultData, '处理完成', {
-                                confirmButtonText: '去查看',
-                                type: 'success',
-                                dangerouslyUseHTMLString: false, 
-                                callback: action => {
-                                    this.$router.push('/user'); 
-                                }
-                            });
-                            return; 
-                        }
-
-                        // 兼容旧逻辑
                         const items = resultData.structured_items || resultData.items || resultData;
                         this.fillDataFromOCR(items);
-
                     } else {
                         this.$message.error(response.data.msg || '识别失败');
                     }
@@ -392,8 +372,6 @@ export default {
         },
 
         fillDataFromOCR(items) {
-            if (typeof items === 'string') return; 
-
             if (!items || items.length === 0) {
                 this.$message.warning('未能识别到有效文字信息');
                 return;
@@ -405,6 +383,16 @@ export default {
             });
 
             this.modelList.forEach(model => {
+                const structuredItem = items.find(item => 
+                    item.name && (item.name.includes(model.name) || model.name.includes(item.name))
+                );
+
+                if (structuredItem && structuredItem.result) {
+                    this.addAndFillModel(model, structuredItem.result);
+                    matchCount++;
+                    return;
+                }
+
                 const line = textLines.find(text => text.includes(model.name));
                 if (line) {
                     const numMatch = line.match(/(\d+(\.\d+)?)/);
@@ -423,7 +411,7 @@ export default {
                     duration: 3000
                 });
             } else {
-                this.$message.warning('OCR 识别成功，但未能自动匹配到任何已知的健康指标，请手动录入。');
+                this.$message.warning('识别成功，但未能自动匹配到任何已知的健康指标，请手动录入。');
             }
         },
 
@@ -487,7 +475,7 @@ export default {
             })
         },
         updateModel(model) {
-            this.data = model;
+            this.data = { ...model }; 
             this.dialogUserOperaion = true;
             this.isOperation = true;
         },
@@ -558,6 +546,14 @@ export default {
             this.userHealthModel.name = '';
             this.getAllModelConfig();
         },
+        handleAvatarSuccess(res, file) {
+            if (res.code !== 200) {
+                this.$message.error(`健康模型封面上传异常`);
+                return;
+            }
+            this.$message.success(`健康模型封面上传成功`);
+            this.data.cover = res.data;
+        },
         getUser() {
             const userInfo = sessionStorage.getItem('userInfo');
             if (userInfo) {
@@ -587,12 +583,13 @@ export default {
                     });
                 }
             } catch (error) {
-                console.error('出错:', error);
-                this.$message.error('提交失败');
+                console.error('提交表单时出错:', error);
+                this.$message.error('提交失败，请稍后再试！');
             }
         },
         addModel() {
             this.dialogUserOperaion = true;
+            this.data = {}; // 重置表单
         },
         handleClick(tab, event) {
             this.userHealthModel = {};

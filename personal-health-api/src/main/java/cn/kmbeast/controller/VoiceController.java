@@ -17,8 +17,8 @@ import java.util.Base64;
 public class VoiceController {
 
     // 如果自己用的话请替换为您的腾讯云密钥，这里用的是本人的
-    private static final String SECRET_ID = "1383264962";
-    private static final String SECRET_KEY = "AKIDeJyZx88xZy97uUr7TebLrCNamrjSF1f6";
+    private static final String SECRET_ID = "AKIDFF3e2zvkNq7C92jDWdXKuJVGtJWXL2c0";
+    private static final String SECRET_KEY = "vhINK4cx87tSItHTSNC0s8E9tUjpjQ5Z";
 
     @PostMapping("/recognize")
     public Result<String> recognize(@RequestParam("file") MultipartFile file) {
