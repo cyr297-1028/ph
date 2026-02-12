@@ -227,6 +227,12 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public Result<Object> login(UserLoginDTO userLoginDTO) {
+
+        // 参数校验，防止空参导致查询全表
+        if (userLoginDTO.getUserAccount() == null || userLoginDTO.getUserAccount().trim().isEmpty()) {
+            return ApiResult.error("账号不能为空");
+        }
+
         User user = userMapper.getByActive(
                 User.builder().userAccount(userLoginDTO.getUserAccount()).build()
         );

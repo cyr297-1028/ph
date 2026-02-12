@@ -15,7 +15,8 @@ import javax.servlet.http.HttpServletResponse;
 import java.util.List;
 
 /**
- * 健康模型的 Controller
+ * 健康模型配置 Controller
+ * 用于管理体检指标项（如血压、心率等）的配置
  */
 @RestController
 @RequestMapping(value = "/health-model-config")
@@ -33,7 +34,7 @@ public class HealthModelConfigController {
     }
 
     /**
-     * 下载模型导入模板
+     * 下载模型导入模板 (Excel)
      */
     @GetMapping(value = "/template")
     public void downloadTemplate(HttpServletResponse response) {
@@ -69,7 +70,7 @@ public class HealthModelConfigController {
     }
 
     /**
-     * 健康模型新增 (用户)
+     * 健康模型新增 (用户私有)
      */
     @PostMapping(value = "/save")
     public Result<Void> save(@RequestBody HealthModelConfig healthModelConfig) {
@@ -78,7 +79,7 @@ public class HealthModelConfigController {
     }
 
     /**
-     * 健康模型新增 (管理员)
+     * 健康模型新增 (管理员全局)
      */
     @Protector(role = "管理员")
     @PostMapping(value = "config/save")
@@ -87,22 +88,34 @@ public class HealthModelConfigController {
         return healthModelConfigService.save(healthModelConfig);
     }
 
+    /**
+     * 批量删除健康模型配置
+     */
     @PostMapping(value = "/batchDelete")
     public Result<Void> batchDelete(@RequestBody List<Long> ids) {
         return healthModelConfigService.batchDelete(ids);
     }
 
+    /**
+     * 修改健康模型配置
+     */
     @PutMapping(value = "/update")
     public Result<Void> update(@RequestBody HealthModelConfig healthModelConfig) {
         return healthModelConfigService.update(healthModelConfig);
     }
 
+    /**
+     * 获取所有健康模型列表（不分页）
+     */
     @Pager
     @PostMapping(value = "/modelList")
     public Result<List<HealthModelConfigVO>> modelList() {
         return healthModelConfigService.modelList();
     }
 
+    /**
+     * 分页查询健康模型配置
+     */
     @Pager
     @PostMapping(value = "/query")
     public Result<List<HealthModelConfigVO>> query(@RequestBody HealthModelConfigQueryDto healthModelConfigQueryDto) {

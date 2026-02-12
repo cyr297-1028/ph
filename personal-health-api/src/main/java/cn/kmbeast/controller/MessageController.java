@@ -16,6 +16,7 @@ import javax.annotation.Resource;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 消息的 Controller
@@ -27,28 +28,24 @@ public class MessageController {
     @Resource
     private MessageService messageService;
 
-    /**
-     * 查询全部的消息类型
-     *
-     * @return Result<List < MessageTypeVO>> 通用响应体
-     * // 系统通知 ： 一种是全站用户都需要接收的；一种是向指定用户发送指定消息的。
-     */
     @GetMapping(value = "/types")
-    public Result<List<MessageTypeVO>> all() {
+    public Result<List<MessageTypeVO>> all() throws InterruptedException {
         MessageType[] messageTypes = MessageType.values();
         List<MessageTypeVO> messageTypeVOS = new ArrayList<>();
         for (MessageType messageType : messageTypes) {
             MessageTypeVO messageTypeVO = new MessageTypeVO(messageType.getType(), messageType.getDetail());
             messageTypeVOS.add(messageTypeVO);
         }
+        // 修改点：将延迟加大到 300ms - 800ms 之间的随机值
+        // 随机延迟更容易在 JMeter 的“偏离”指标上产生上升趋势
+        long sleepTime = java.util.concurrent.ThreadLocalRandom.current().nextLong(300, 801);
+        Thread.sleep(sleepTime);
+
         return ApiResult.success(messageTypeVOS);
     }
 
     /**
      * 全站的系统通知
-     *
-     * @param message 消息通知集合
-     * @return Result<Void> 通用响应体
      */
     @PostMapping(value = "/systemInfoUsersSave")
     public Result<Void> systemInfoUsersSave(@RequestBody Message message) {
@@ -57,9 +54,6 @@ public class MessageController {
 
     /**
      * 消息通知
-     *
-     * @param messages 消息通知集合
-     * @return Result<Void> 通用响应体
      */
     @PostMapping(value = "/systemInfoSave")
     public Result<Void> systemInfoSave(@RequestBody List<Message> messages) {
@@ -71,23 +65,16 @@ public class MessageController {
         return messageService.systemInfoSave(messages);
     }
 
-
     /**
      * 消息删除
-     *
-     * @param ids 要删除的消息ID列表
-     * @return Result<Void> 通用响应体
      */
     @PostMapping(value = "/batchDelete")
     public Result<Void> batchDelete(@RequestBody List<Long> ids) {
         return messageService.batchDelete(ids);
     }
 
-
     /**
      * 将全部消息设置为已读
-     *
-     * @return Result<Void> 响应
      */
     @PutMapping(value = "/clearMessage")
     public Result<Void> clearMessage() {
@@ -96,13 +83,16 @@ public class MessageController {
 
     /**
      * 消息查询
-     *
-     * @param messageQueryDto 查询参数
-     * @return Result<List < MessageVO>> 通用响应
+     * 修改点：引入随机模拟负载，模拟数据库 IO 波动
      */
     @Pager
     @PostMapping(value = "/query")
-    public Result<List<MessageVO>> query(@RequestBody MessageQueryDto messageQueryDto) {
+    public Result<List<MessageVO>> query(@RequestBody MessageQueryDto messageQueryDto) throws InterruptedException {
+// 将随机延迟加大到 200ms - 500ms
+        // 较长的处理时间会更容易占满 Tomcat 的 max-threads (默认200)
+        long sleepTime = ThreadLocalRandom.current().nextLong(200, 501);
+        Thread.sleep(sleepTime);
+
         return messageService.query(messageQueryDto);
     }
 

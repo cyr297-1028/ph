@@ -125,27 +125,44 @@ public class UserHealthController {
         return userHealthService.importData(file);
     }
 
+    /**
+     * 新增用户健康记录 (批量保存)
+     */
     @PostMapping(value = "/save")
     public Result<Void> save(@RequestBody List<UserHealth> userHealths) {
         return userHealthService.save(userHealths);
     }
 
+    /**
+     * 批量删除用户健康记录
+     */
     @PostMapping(value = "/batchDelete")
     public Result<Void> batchDelete(@RequestBody List<Long> ids) {
         return userHealthService.batchDelete(ids);
     }
 
+    /**
+     * 修改用户健康记录
+     */
     @PutMapping(value = "/update")
     public Result<Void> update(@RequestBody UserHealth userHealth) {
         return userHealthService.update(userHealth);
     }
 
+    /**
+     * 分页查询用户健康记录
+     */
     @Pager
     @PostMapping(value = "/query")
     public Result<List<UserHealthVO>> query(@RequestBody UserHealthQueryDto userHealthQueryDto) {
         return userHealthService.query(userHealthQueryDto);
     }
 
+    /**
+     * 根据时间范围查询指定指标的记录
+     * @param id 健康模型ID (指标ID)
+     * @param day 查询最近几天的数据
+     */
     @GetMapping(value = "/timeQuery/{id}/{day}")
     public Result<List<UserHealthVO>> timeQuery(@PathVariable Integer id,
                                                 @PathVariable Integer day) {
@@ -159,6 +176,9 @@ public class UserHealthController {
         return userHealthService.query(userHealthQueryDto);
     }
 
+    /**
+     * 统计近几日的用户健康记录录入数量 (用于图表展示)
+     */
     @GetMapping(value = "/daysQuery/{day}")
     @ResponseBody
     public Result<List<ChartVO>> query(@PathVariable Integer day) {

@@ -1,6 +1,12 @@
 # 服务配置
 server:
   port: 21090
+  tomcat:
+    max-connections: 2000
+    accept-count: 1000
+    threads:
+      max: 200
+      min-spare: 50
   servlet:
     context-path: /api/personal-heath/v1.0
 # API地址前缀，用于接口拦截放行
@@ -17,6 +23,10 @@ spring:
     url: jdbc:mysql://localhost:3306/person_health?characterEncoding=utf8&useSSL=false&serverTimezone=GMT%2B8&allowPublicKeyRetrieval=true
     username: root
     password: 123456
+    hikari:
+      maximum-pool-size: 50      # 将最大连接数调大（建议与你的压测并发数一致）
+      minimum-idle: 10           # 最小空闲连接
+      connection-timeout: 30000  # 等待超时时间（30秒）
 # 让 Mybatis 在 Mapper目录下找到 XML 映射文件
 mybatis:
   mapper-locations: classpath:mapper/*.xml
