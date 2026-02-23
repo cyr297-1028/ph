@@ -129,6 +129,14 @@ const routes = [
         },
       },
       {
+        path: '/food-identify',
+        name: '热量打卡',
+        component: () => import('@/views/user/FoodIdentify.vue'),
+        meta: {
+          requireAuth: true,
+        },
+      },
+      {
         name: '健康资讯详情',
         path: "/news-detail",
         component: () => import(`@/views/user/NewsDetail.vue`),
