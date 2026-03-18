@@ -174,7 +174,12 @@ export default {
           this.renderChart(); // 数据获取后更新图表
         }
       } catch (error) {
-        this.$message.error("获取打卡记录失败");
+        console.error("🔥详细报错信息:", error);
+          if (error.response) {
+            this.$message.error(`保存失败：服务器拒绝访问 (状态码 ${error.response.status})`);
+        } else {
+            this.$message.error(`保存失败：网络或代码异常 (${error.message})`);
+        }
       }
     },
 
